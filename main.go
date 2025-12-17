@@ -47,28 +47,42 @@ func main() {
 	pluginManager := plugins.NewManager()
 	pluginManager.LoadDefaultPlugins()
 
-	// Check if running on Heroku (webhook mode) or local (polling mode)
+	// Check run mode
 	port := os.Getenv("PORT")
+	usePolling := os.Getenv("USE_POLLING") == "true"
 	webhookURL := os.Getenv("WEBHOOK_URL")
-	herokuAppName := os.Getenv("HEROKU_APP_NAME") // Auto-set by Heroku if dyno metadata enabled
 
-	// Auto-generate webhook URL if not set but running on Heroku
-	if port != "" && webhookURL == "" && herokuAppName != "" {
-		webhookURL = "https://" + herokuAppName + ".herokuapp.com"
-		log.Printf("📍 Auto-generated WEBHOOK_URL from HEROKU_APP_NAME: %s", webhookURL)
-	}
-
-	if port != "" && webhookURL != "" {
-		// Heroku mode: use webhook
+	// If USE_POLLING is true or no PORT (local), use polling mode
+	if usePolling || port == "" {
+		// Keep HTTP server alive for Heroku health check if PORT is set
+		if port != "" {
+			go startHealthServer(port)
+		}
+		runPollingMode(bot, pluginManager)
+	} else if webhookURL != "" {
+		// Heroku mode with webhook
 		runWebhookMode(bot, pluginManager, port, webhookURL, botToken)
-	} else if port != "" {
-		// Heroku without webhook URL - still try webhook mode with default URL
-		log.Println("⚠️ PORT is set but WEBHOOK_URL is empty. Please set WEBHOOK_URL env var.")
-		log.Println("💡 Run: heroku config:set WEBHOOK_URL=https://your-app-name.herokuapp.com")
-		runPollingMode(bot, pluginManager)
 	} else {
-		// Local mode: use polling
+		// PORT set but no webhook URL - use polling with health server
+		log.Println("⚠️ PORT is set but WEBHOOK_URL is empty. Using polling mode...")
+		go startHealthServer(port)
 		runPollingMode(bot, pluginManager)
+	}
+}
+
+// startHealthServer starts a simple HTTP server for Heroku health checks
+func startHealthServer(port string) {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Bot is running!"))
+	})
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+	log.Printf("🌐 Health check server starting on port %s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Printf("Health server error: %v", err)
 	}
 }
 

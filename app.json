@@ -29,6 +29,10 @@
       "description": "Enable debug mode (true/false)",
       "value": "false"
     },
+    "USE_POLLING": {
+      "description": "Use polling mode instead of webhook (true/false). Recommended for stability.",
+      "value": "true"
+    },
     "OWNER_IDS": {
       "description": "Comma-separated Telegram user IDs of bot owners",
       "value": "1259894923",
