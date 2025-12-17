@@ -3,6 +3,7 @@ package databases
 import (
 	"context"
 	"log"
+	"net"
 	"os"
 
 	"tg-anon-go/constants"
@@ -27,6 +28,12 @@ func InitDatabase() error {
 	// Set pool configuration
 	config.MaxConns = 10
 	config.MinConns = 2
+
+	// Force IPv4 connection (Heroku has issues with IPv6 to NeonDB)
+	config.ConnConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		d := net.Dialer{}
+		return d.DialContext(ctx, "tcp4", addr) // Force IPv4
+	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
