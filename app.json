@@ -25,6 +25,11 @@
       "value": "https://tganon.herokuapp.com",
       "required": false
     },
+    "APP_URL": {
+      "description": "Heroku app URL for self-ping to keep dyno awake (e.g., https://tganon-xxxxx.herokuapp.com)",
+      "value": "https://tganon-94725536caa9.herokuapp.com",
+      "required": false
+    },
     "BOT_DEBUG": {
       "description": "Enable debug mode (true/false)",
       "value": "false"

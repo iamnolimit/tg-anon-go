@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"tg-anon-go/databases"
 	"tg-anon-go/plugins"
@@ -51,12 +52,15 @@ func main() {
 	port := os.Getenv("PORT")
 	usePolling := os.Getenv("USE_POLLING") == "true"
 	webhookURL := os.Getenv("WEBHOOK_URL")
+	appURL := os.Getenv("APP_URL") // For self-ping to keep dyno awake
 
 	// If USE_POLLING is true or no PORT (local), use polling mode
 	if usePolling || port == "" {
 		// Keep HTTP server alive for Heroku health check if PORT is set
 		if port != "" {
 			go startHealthServer(port)
+			// Start self-ping to prevent Heroku idle
+			startSelfPing(appURL)
 		}
 		runPollingMode(bot, pluginManager)
 	} else if webhookURL != "" {
@@ -66,6 +70,8 @@ func main() {
 		// PORT set but no webhook URL - use polling with health server
 		log.Println("⚠️ PORT is set but WEBHOOK_URL is empty. Using polling mode...")
 		go startHealthServer(port)
+		// Start self-ping to prevent Heroku idle
+		startSelfPing(appURL)
 		runPollingMode(bot, pluginManager)
 	}
 }
@@ -84,6 +90,28 @@ func startHealthServer(port string) {
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Printf("Health server error: %v", err)
 	}
+}
+
+// startSelfPing starts a self-ping routine to keep the Heroku dyno awake
+func startSelfPing(appURL string) {
+	if appURL == "" {
+		log.Println("⚠️ APP_URL not set, self-ping disabled")
+		return
+	}
+
+	ticker := time.NewTicker(25 * time.Minute) // Ping every 25 minutes (before 30 min idle)
+	go func() {
+		for range ticker.C {
+			resp, err := http.Get(appURL + "/health")
+			if err != nil {
+				log.Printf("❌ Self-ping failed: %v", err)
+			} else {
+				resp.Body.Close()
+				log.Printf("✅ Self-ping successful")
+			}
+		}
+	}()
+	log.Printf("🔄 Self-ping enabled for %s", appURL)
 }
 
 // runWebhookMode menjalankan bot dengan webhook (untuk Heroku)
