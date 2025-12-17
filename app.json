@@ -21,9 +21,9 @@
       "required": true
     },
     "WEBHOOK_URL": {
-      "description": "Heroku app URL - GANTI DENGAN URL APP HEROKU KAMU",
-      "value": "",
-      "required": true
+      "description": "Heroku app URL - Akan otomatis dibuat berdasarkan nama app (https://APP_NAME.herokuapp.com)",
+      "value": "https://tganon.herokuapp.com",
+      "required": false
     },
     "BOT_DEBUG": {
       "description": "Enable debug mode (true/false)",

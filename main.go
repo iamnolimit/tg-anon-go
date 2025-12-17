@@ -41,7 +41,6 @@ func main() {
 	if os.Getenv("BOT_DEBUG") == "true" {
 		bot.Debug = true
 	}
-
 	log.Printf("🤖 Bot authorized on account @%s", bot.Self.UserName)
 
 	// Initialize plugin manager
@@ -50,11 +49,23 @@ func main() {
 
 	// Check if running on Heroku (webhook mode) or local (polling mode)
 	port := os.Getenv("PORT")
-	webhookURL := os.Getenv("WEBHOOK_URL") // e.g., https://your-app.herokuapp.com
+	webhookURL := os.Getenv("WEBHOOK_URL")
+	herokuAppName := os.Getenv("HEROKU_APP_NAME") // Auto-set by Heroku if dyno metadata enabled
+
+	// Auto-generate webhook URL if not set but running on Heroku
+	if port != "" && webhookURL == "" && herokuAppName != "" {
+		webhookURL = "https://" + herokuAppName + ".herokuapp.com"
+		log.Printf("📍 Auto-generated WEBHOOK_URL from HEROKU_APP_NAME: %s", webhookURL)
+	}
 
 	if port != "" && webhookURL != "" {
 		// Heroku mode: use webhook
 		runWebhookMode(bot, pluginManager, port, webhookURL, botToken)
+	} else if port != "" {
+		// Heroku without webhook URL - still try webhook mode with default URL
+		log.Println("⚠️ PORT is set but WEBHOOK_URL is empty. Please set WEBHOOK_URL env var.")
+		log.Println("💡 Run: heroku config:set WEBHOOK_URL=https://your-app-name.herokuapp.com")
+		runPollingMode(bot, pluginManager)
 	} else {
 		// Local mode: use polling
 		runPollingMode(bot, pluginManager)
