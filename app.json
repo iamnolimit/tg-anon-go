@@ -1,0 +1,74 @@
+{
+  "name": "tg-anon-go",
+  "description": "Telegram Anonymous Chat Bot with NeonDB",
+  "repository": "https://github.com/yourusername/tg-anon-go",
+  "keywords": ["telegram", "bot", "anonymous", "chat", "golang"],
+  "image": "heroku/go",
+  "addons": [],
+  "env": {
+    "GO_INSTALL_PACKAGE_SPEC": {
+      "description": "Go install package spec",
+      "value": "./..."
+    },
+    "BOT_TOKEN": {
+      "description": "Telegram Bot Token from @BotFather",
+      "value": "7819067921:AAEaYrdKdwvLnPXJ2cMPTGNNBOERGzymBb4",
+      "required": true
+    },
+    "DATABASE_URL": {
+      "description": "NeonDB PostgreSQL connection URL",
+      "value": "postgresql://neondb_owner:npg_QqRVU7cj3dJP@ep-weathered-smoke-a562bga9-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require",
+      "required": true
+    },
+    "WEBHOOK_URL": {
+      "description": "Heroku app URL - GANTI DENGAN URL APP HEROKU KAMU",
+      "value": "",
+      "required": true
+    },
+    "BOT_DEBUG": {
+      "description": "Enable debug mode (true/false)",
+      "value": "false"
+    },
+    "OWNER_IDS": {
+      "description": "Comma-separated Telegram user IDs of bot owners",
+      "value": "1259894923",
+      "required": true
+    },
+    "BOT_OWNER_URL": {
+      "description": "Telegram URL of bot owner",
+      "value": "https://t.me/ursweetbae"
+    },
+    "BOT_CHANNEL_URL": {
+      "description": "Telegram URL of bot channel",
+      "value": "https://t.me/baecorner"
+    },
+    "BOT_SUPPORT_URL": {
+      "description": "Telegram URL of support group",
+      "value": "https://t.me/tgnolimitchat"
+    },
+    "LOG_GROUP_ID": {
+      "description": "Telegram group ID for media logging (negative number)",
+      "value": "-1002339919418",
+      "required": true
+    },
+    "MAX_WARNINGS": {
+      "description": "Maximum warnings before auto-ban",
+      "value": "3"
+    },
+    "ADS_INTERVAL_MESSAGES": {
+      "description": "Send ads every N messages",
+      "value": "30"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/go"
+    }
+  ]
+}

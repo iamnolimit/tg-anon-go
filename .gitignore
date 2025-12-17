@@ -1,0 +1,14 @@
+# Environment
+.env
+
+# Binary
+*.exe
+bin/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
