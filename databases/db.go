@@ -29,10 +29,42 @@ func InitDatabase() error {
 	config.MaxConns = 10
 	config.MinConns = 2
 
+	// Custom resolver that forces IPv4
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{}
+			return d.DialContext(ctx, "udp4", "8.8.8.8:53") // Use Google DNS over IPv4
+		},
+	}
+
 	// Force IPv4 connection (Heroku has issues with IPv6 to NeonDB)
 	config.ConnConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		d := net.Dialer{}
-		return d.DialContext(ctx, "tcp4", addr) // Force IPv4
+		// Split host:port
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+
+		// Resolve hostname to IPv4 addresses only
+		ips, err := resolver.LookupIP(ctx, "ip4", host)
+		if err != nil {
+			return nil, err
+		}
+
+		// Try each IPv4 address
+		var lastErr error
+		for _, ip := range ips {
+			d := net.Dialer{}
+			conn, err := d.DialContext(ctx, "tcp4", net.JoinHostPort(ip.String(), port))
+			if err == nil {
+				log.Printf("✅ Connected to NeonDB via IPv4: %s", ip.String())
+				return conn, nil
+			}
+			lastErr = err
+		}
+
+		return nil, lastErr
 	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
