@@ -59,6 +59,9 @@ var (
 	BotSupportURL = GetEnv("BOT_SUPPORT_URL", "https://t.me/tgnolimitchat")
 )
 
+// Redis URL - dari environment variable with default
+var DefaultRedisURL = "redis://default:5NQHBzWOhwHrczAy8SfFtqCCoPcHVTzn@redis-12448.crce194.ap-seast-1-1.ec2.cloud.redislabs.com:12448"
+
 // Log Group ID - dari environment variable
 var LogGroupID = GetEnvInt64("LOG_GROUP_ID", -1002339919418)
 
@@ -83,9 +86,9 @@ const (
 	VarLocation  = "location"  // Nama lokasi user
 	VarLatitude  = "latitude"  // Koordinat latitude
 	VarLongitude = "longitude" // Koordinat longitude
-
 	// Registration State
-	VarRegState = "reg_state" // State registrasi: none, ask_name, ask_age, ask_location, done
+	VarRegState  = "reg_state"  // State registrasi: none, ask_name, ask_age, ask_location, done
+	VarEditState = "edit_state" // State edit profil: none, edit_name, edit_age, edit_gender, edit_location
 
 	// Search Preferences
 	VarSearchMode   = "search_mode"   // Mode pencarian: random, nearby
@@ -125,9 +128,9 @@ const (
 
 // Gender Values
 const (
-	GenderMale   = "male"
-	GenderFemale = "female"
-	GenderOther  = "other"
+	GenderMale   = "Pria"
+	GenderFemale = "Wanita"
+	GenderOther  = "Lainnya"
 	GenderAny    = "any"
 )
 
@@ -142,6 +145,16 @@ const (
 	RegStateNone        = "none"
 	RegStateAskName     = "ask_name"
 	RegStateAskAge      = "ask_age"
+	RegStateAskGender   = "ask_gender"
 	RegStateAskLocation = "ask_location"
 	RegStateDone        = "done"
+)
+
+// Edit Profile States
+const (
+	EditStateNone     = "none"
+	EditStateName     = "edit_name"
+	EditStateAge      = "edit_age"
+	EditStateGender   = "edit_gender"
+	EditStateLocation = "edit_location"
 )

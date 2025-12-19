@@ -20,6 +20,11 @@
       "value": "postgresql://neondb_owner:npg_QqRVU7cj3dJP@ep-weathered-smoke-a562bga9-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require",
       "required": true
     },
+    "REDIS_URL": {
+      "description": "Redis connection URL for realtime matching (e.g., redis://default:password@host:port). Get free Redis at Upstash.com or Render.com",
+      "value": "redis://default:5NQHBzWOhwHrczAy8SfFtqCCoPcHVTzn@redis-12448.crce194.ap-seast-1-1.ec2.cloud.redislabs.com:12448",
+      "required": true
+    },
     "WEBHOOK_URL": {
       "description": "Heroku app URL - Akan otomatis dibuat berdasarkan nama app (https://APP_NAME.herokuapp.com)",
       "value": "https://tganon.herokuapp.com",

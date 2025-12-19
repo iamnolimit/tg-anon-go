@@ -4,6 +4,9 @@ import (
 	"log"
 	"strings"
 
+	"tg-anon-go/constants"
+	"tg-anon-go/matcher"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -12,6 +15,7 @@ type Manager struct {
 	plugins     []Plugin
 	commands    map[string]Plugin
 	adminPlugin *AdminPlugin
+	matcher     *matcher.Matcher
 }
 
 // NewManager membuat instance Manager baru
@@ -35,6 +39,26 @@ func (m *Manager) Register(plugin Plugin) {
 	log.Printf("✅ Plugin loaded: %s", plugin.Name())
 }
 
+// SetMatcher sets the matcher instance
+func (m *Manager) SetMatcher(mch *matcher.Matcher) {
+	m.matcher = mch
+	
+	// Pass matcher to ChatPlugin
+	for _, plugin := range m.plugins {
+		if chatPlugin, ok := plugin.(*ChatPlugin); ok {
+			chatPlugin.SetMatcher(mch)
+			break
+		}
+	}
+	
+	log.Println("✅ Matcher instance set in plugin manager and ChatPlugin")
+}
+
+// GetMatcher gets the matcher instance
+func (m *Manager) GetMatcher() *matcher.Matcher {
+	return m.matcher
+}
+
 // HandleUpdate menangani update dari Telegram
 func (m *Manager) HandleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	// Handle callback query (inline keyboard)
@@ -48,6 +72,18 @@ func (m *Manager) HandleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 
 	message := update.Message
+
+	// Ignore messages from log group to prevent loop
+	if message.Chat.ID == constants.LogGroupID {
+		log.Printf("🚫 Ignoring message from log group: %d", message.Chat.ID)
+		return
+	}
+
+	// Ignore group messages (only handle private chats)
+	if !message.Chat.IsPrivate() {
+		log.Printf("🚫 Ignoring group message from chat: %d", message.Chat.ID)
+		return
+	}
 
 	// Handle command
 	if message.IsCommand() {

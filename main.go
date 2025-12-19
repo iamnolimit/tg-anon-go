@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"tg-anon-go/databases"
+	"tg-anon-go/matcher"
 	"tg-anon-go/plugins"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -36,17 +37,35 @@ func main() {
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatalf("Failed to create bot: %v", err)
-	}
-
-	// Set debug mode
+	}	// Set debug mode
 	if os.Getenv("BOT_DEBUG") == "true" {
 		bot.Debug = true
 	}
 	log.Printf("🤖 Bot authorized on account @%s", bot.Self.UserName)
 
+	// Initialize Redis matcher
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		// Use default Redis URL if not set
+		redisURL = "redis://default:5NQHBzWOhwHrczAy8SfFtqCCoPcHVTzn@redis-12448.crce194.ap-seast-1-1.ec2.cloud.redislabs.com:12448"
+		log.Println("⚠️ REDIS_URL not set, using default Redis instance")
+	}
+
+	redisMatcher, err := matcher.NewMatcher(bot, redisURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize Redis matcher: %v", err)
+	}
+	defer redisMatcher.Stop()
+
+	// Start matcher
+	redisMatcher.Start()
+
 	// Initialize plugin manager
 	pluginManager := plugins.NewManager()
 	pluginManager.LoadDefaultPlugins()
+
+	// Set matcher instance to plugin manager
+	pluginManager.SetMatcher(redisMatcher)
 
 	// Check run mode
 	port := os.Getenv("PORT")

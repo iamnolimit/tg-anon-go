@@ -12,6 +12,7 @@ import (
 
 	"tg-anon-go/constants"
 	"tg-anon-go/databases"
+	"tg-anon-go/matcher"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -19,11 +20,18 @@ import (
 // ChatPlugin menangani command search, next, stop dan pesan chat
 type ChatPlugin struct {
 	BasePlugin
+	matcher *matcher.Matcher
 }
 
 // NewChatPlugin membuat instance ChatPlugin baru
 func NewChatPlugin() *ChatPlugin {
 	return &ChatPlugin{}
+}
+
+// SetMatcher sets the matcher instance
+func (p *ChatPlugin) SetMatcher(m *matcher.Matcher) {
+	p.matcher = m
+	log.Println("✅ Matcher instance set in ChatPlugin")
 }
 
 // Name mengembalikan nama plugin
@@ -84,12 +92,32 @@ func (p *ChatPlugin) handleSearch(ctx context.Context, bot *tgbotapi.BotAPI, cha
 	case constants.StatusChatting:
 		return p.sendMessage(bot, chatID, constants.MsgAlreadyChatting)
 	}
-
 	// Update last active
 	databases.UpdateLastActive(ctx, userID)
 
-	// Show search mode options
-	return p.showSearchModeOptions(bot, chatID)
+	// Show gender preference options first
+	return p.showGenderPreferenceOptions(bot, chatID)
+}
+
+// showGenderPreferenceOptions menampilkan pilihan gender preference
+func (p *ChatPlugin) showGenderPreferenceOptions(bot *tgbotapi.BotAPI, chatID int64) error {
+	msg := tgbotapi.NewMessage(chatID, constants.MsgSearchChooseGender)
+	msg.ParseMode = "Markdown"
+	
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👨 Pria", "gender_pref_pria"),
+			tgbotapi.NewInlineKeyboardButtonData("👩 Wanita", "gender_pref_wanita"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🌈 Lainnya", "gender_pref_lainnya"),
+			tgbotapi.NewInlineKeyboardButtonData("🎲 Semua", "gender_pref_any"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	
+	_, err := bot.Send(msg)
+	return err
 }
 
 // showSearchModeOptions menampilkan pilihan mode pencarian
@@ -112,23 +140,27 @@ func (p *ChatPlugin) showSearchModeOptions(bot *tgbotapi.BotAPI, chatID int64) e
 // doSearchRandom melakukan pencarian random
 func (p *ChatPlugin) doSearchRandom(ctx context.Context, bot *tgbotapi.BotAPI, chatID, userID int64) error {
 	log.Printf("🔍 User %d mencari partner (random)...", userID)
-	partner, _, err := databases.FindAndConnectPartner(ctx, userID)
+	
+	// Set user status to searching
+	err := databases.SetUserStatus(ctx, userID, constants.StatusSearching)
 	if err != nil {
-		log.Printf("❌ Tidak ada partner ditemukan untuk user %d: %v", userID, err)
-		err = databases.SetUserStatus(ctx, userID, constants.StatusSearching)
-		if err != nil {
-			log.Printf("Error setting user status: %v", err)
-			return p.sendMessage(bot, chatID, constants.MsgError)
-		}
-		log.Printf("✅ User %d sekarang status: searching", userID)
-		return p.sendMessage(bot, chatID, constants.MsgSearching)
+		log.Printf("Error setting user status: %v", err)
+		return p.sendMessage(bot, chatID, constants.MsgError)
 	}
 
-	log.Printf("🎉 Partner ditemukan! User %d <-> User %d", userID, partner.TelegramID)
-	p.sendMessage(bot, chatID, constants.MsgPartnerFound)
-	p.sendMessage(bot, partner.TelegramID, constants.MsgPartnerFound)
+	// Store search mode
+	databases.SetVar(ctx, userID, constants.VarSearchMode, constants.SearchModeRandom)
 
-	return nil
+	// Publish to Redis matcher
+	if p.matcher != nil {
+		if err := p.matcher.PublishSearch(ctx, userID, constants.SearchModeRandom, 0, 0); err != nil {
+			log.Printf("Error publishing search to Redis: %v", err)
+			return p.sendMessage(bot, chatID, constants.MsgError)
+		}
+	}
+
+	log.Printf("✅ User %d sekarang status: searching (random mode, published to Redis)", userID)
+	return p.sendMessage(bot, chatID, constants.MsgSearching)
 }
 
 // doSearchNearby melakukan pencarian berdasarkan lokasi terdekat
@@ -140,23 +172,30 @@ func (p *ChatPlugin) doSearchNearby(ctx context.Context, bot *tgbotapi.BotAPI, c
 
 	log.Printf("🔍 User %d mencari partner (nearby)...", userID)
 	
-	// Try to find nearby partner (max 50 km)
-	partner, _, distance, err := databases.FindAndConnectNearbyPartner(ctx, userID, 50.0)
+	// Set user status to searching
+	err := databases.SetUserStatus(ctx, userID, constants.StatusSearching)
 	if err != nil {
-		log.Printf("❌ Tidak ada partner terdekat untuk user %d: %v", userID, err)
-		// Fallback to random search
-		p.sendMessage(bot, chatID, constants.MsgSearchNearbyNotFound)
-		return p.doSearchRandom(ctx, bot, chatID, userID)
+		log.Printf("Error setting user status: %v", err)
+		return p.sendMessage(bot, chatID, constants.MsgError)
 	}
 
-	log.Printf("🎉 Partner terdekat ditemukan! User %d <-> User %d (%.1f km)", userID, partner.TelegramID, distance)
-	
-	// Send distance info to both users
-	msgWithDistance := fmt.Sprintf(constants.MsgPartnerDistance, distance)
-	p.sendMessage(bot, chatID, msgWithDistance)
-	p.sendMessage(bot, partner.TelegramID, msgWithDistance)
+	// Store search mode
+	databases.SetVar(ctx, userID, constants.VarSearchMode, constants.SearchModeNearby)
 
-	return nil
+	// Get user location
+	lat, _ := databases.GetVarFloat64(ctx, userID, constants.VarLatitude)
+	lon, _ := databases.GetVarFloat64(ctx, userID, constants.VarLongitude)
+
+	// Publish to Redis matcher
+	if p.matcher != nil {
+		if err := p.matcher.PublishSearch(ctx, userID, constants.SearchModeNearby, lat, lon); err != nil {
+			log.Printf("Error publishing search to Redis: %v", err)
+			return p.sendMessage(bot, chatID, constants.MsgError)
+		}
+	}
+
+	log.Printf("✅ User %d sekarang status: searching (nearby mode, published to Redis)", userID)
+	return p.sendMessage(bot, chatID, constants.MsgSearching)
 }
 
 // HandleCallbackQuery menangani callback dari inline keyboard
@@ -169,14 +208,40 @@ func (p *ChatPlugin) HandleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotap
 	if strings.HasPrefix(callback.Data, constants.CallbackWarnUser) {
 		return p.handleWarnCallback(ctx, bot, callback)
 	}
-
 	// Answer callback to remove loading state
 	callbackResponse := tgbotapi.NewCallback(callback.ID, "")
 	bot.Send(callbackResponse)
 
-	// Delete the search mode message
+	// Delete the message
 	deleteMsg := tgbotapi.NewDeleteMessage(chatID, callback.Message.MessageID)
 	bot.Send(deleteMsg)
+
+	// Handle gender preference callbacks
+	if strings.HasPrefix(callback.Data, "gender_pref_") {
+		genderPref := strings.TrimPrefix(callback.Data, "gender_pref_")
+		
+		// Map callback to actual gender value
+		var genderValue string
+		switch genderPref {
+		case "pria":
+			genderValue = constants.GenderMale
+		case "wanita":
+			genderValue = constants.GenderFemale
+		case "lainnya":
+			genderValue = constants.GenderOther
+		case "any":
+			genderValue = constants.GenderAny
+		default:
+			genderValue = constants.GenderAny
+		}
+		
+		// Save gender preference
+		databases.SetVar(ctx, userID, constants.VarSearchGender, genderValue)
+		log.Printf("User %d set gender preference: %s", userID, genderValue)
+		
+		// Show search mode options
+		return p.showSearchModeOptions(bot, chatID)
+	}
 
 	switch callback.Data {
 	case "search_random":
@@ -190,7 +255,10 @@ func (p *ChatPlugin) HandleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotap
 
 // CanHandleCallback mengecek apakah plugin bisa handle callback ini
 func (p *ChatPlugin) CanHandleCallback(data string) bool {
-	return data == "search_random" || data == "search_nearby" || strings.HasPrefix(data, constants.CallbackWarnUser)
+	return data == "search_random" || 
+		data == "search_nearby" || 
+		strings.HasPrefix(data, "gender_pref_") ||
+		strings.HasPrefix(data, constants.CallbackWarnUser)
 }
 
 // handleNext skip partner dan cari baru
@@ -209,6 +277,10 @@ func (p *ChatPlugin) handleNext(ctx context.Context, bot *tgbotapi.BotAPI, chatI
 		err = databases.SetUserStatus(ctx, userID, constants.StatusIdle)
 		if err != nil {
 			return p.sendMessage(bot, chatID, constants.MsgError)
+		}
+		// Remove from Redis searching set
+		if p.matcher != nil {
+			p.matcher.RemoveSearchingUser(ctx, userID)
 		}
 		return p.sendMessage(bot, chatID, constants.MsgSearchCancelled)
 	case constants.StatusChatting:
@@ -245,6 +317,10 @@ func (p *ChatPlugin) handleStop(ctx context.Context, bot *tgbotapi.BotAPI, chatI
 		err = databases.SetUserStatus(ctx, userID, constants.StatusIdle)
 		if err != nil {
 			return p.sendMessage(bot, chatID, constants.MsgError)
+		}
+		// Remove from Redis searching set
+		if p.matcher != nil {
+			p.matcher.RemoveSearchingUser(ctx, userID)
 		}
 		return p.sendMessage(bot, chatID, constants.MsgSearchCancelled)
 	case constants.StatusChatting:

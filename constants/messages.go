@@ -2,12 +2,14 @@ package constants
 
 // Bot Commands
 const (
-	CmdStart  = "start"
-	CmdSearch = "search"
-	CmdNext   = "next"
-	CmdStop   = "stop"
-	CmdHelp   = "help"
-	CmdShare  = "share"
+	CmdStart       = "start"
+	CmdSearch      = "search"
+	CmdNext        = "next"
+	CmdStop        = "stop"
+	CmdHelp        = "help"
+	CmdShare       = "share"
+	CmdProfile     = "profile"
+	CmdEditProfile = "editprofile"
 )
 
 // Admin Commands
@@ -50,12 +52,13 @@ Bot ini memungkinkan kamu untuk chat dengan orang asing secara anonim.
 • Jangan spam
 
 Ketik /search untuk mulai mencari partner!`
-
 	MsgHelp = `📋 *Daftar Perintah:*
 
 /search - Mencari partner chat baru
 /next - Skip partner dan cari yang baru
 /stop - Mengakhiri percakapan saat ini
+/profile - Lihat profil kamu
+/editprofile - Edit profil kamu
 /help - Menampilkan pesan bantuan ini
 
 💡 *Tips:*
@@ -102,13 +105,16 @@ const (
 Sebelum mulai, yuk lengkapi profil kamu dulu! 📝
 
 *Silakan masukkan nama kamu:*`
-
 	MsgRegAskAge = `👤 Hai *%s*! Nama yang bagus!
 
 *Sekarang masukkan umur kamu:*
 (Contoh: 20)`
 
-	MsgRegAskLocation = `📅 Umur kamu *%s tahun* ya!
+	MsgRegAskGender = `📅 Umur kamu *%s tahun* ya!
+
+*Pilih jenis kelamin kamu:*`
+
+	MsgRegAskLocation = `✅ Gender tersimpan!
 
 *Terakhir, bagikan lokasi kamu:*
 📍 Klik tombol di bawah untuk share lokasi.
@@ -120,27 +126,65 @@ Sebelum mulai, yuk lengkapi profil kamu dulu! 📝
 📋 *Profil kamu:*
 👤 Nama: *%s*
 📅 Umur: *%s tahun*
+👥 Gender: *%s*
 📍 Lokasi: *%s*
 
 Sekarang kamu bisa mulai mencari partner chat!
 Ketik /search untuk memulai.`
-
-	MsgRegInvalidAge    = "⚠️ Umur tidak valid. Silakan masukkan angka antara 13-100."
+	MsgRegInvalidAge      = "⚠️ Umur tidak valid. Silakan masukkan angka antara 13-100."
+	MsgRegInvalidGender   = "⚠️ Pilihan tidak valid. Silakan pilih gender menggunakan tombol."
 	MsgRegInvalidLocation = "⚠️ Silakan kirim lokasi menggunakan tombol di bawah atau fitur 📎 Attachment > Location di Telegram."
 
 	MsgProfileInfo = `📋 *Profil Kamu:*
 
 👤 Nama: *%s*
 📅 Umur: *%s tahun*
+👥 Gender: *%s*
 📍 Lokasi: *%s*
 📊 Total Chat: *%d*
 💬 Total Pesan: *%d*
 
-Gunakan /search untuk mencari partner!`
+Gunakan /search untuk mencari partner!
+Gunakan /editprofile untuk edit profil.`
+
+	MsgEditProfile = `✏️ *Edit Profil*
+
+Pilih data yang ingin kamu ubah:`
+
+	MsgEditName = `✏️ *Edit Nama*
+
+Nama saat ini: *%s*
+
+Silakan kirim nama baru kamu:`
+
+	MsgEditAge = `✏️ *Edit Umur*
+
+Umur saat ini: *%s tahun*
+
+Silakan kirim umur baru kamu (13-100):`
+
+	MsgEditGender = `✏️ *Edit Gender*
+
+Gender saat ini: *%s*
+
+Pilih gender baru:`
+
+	MsgEditLocation = `✏️ *Edit Lokasi*
+
+Lokasi saat ini: *%s*
+
+Bagikan lokasi baru kamu:`
+
+	MsgProfileUpdated = "✅ Profil berhasil diupdate!"
+	MsgEditCancelled  = "❌ Edit profil dibatalkan."
 )
 
 // Search Messages
 const (
+	MsgSearchChooseGender = `🔍 *Cari Partner Berdasarkan Gender:*
+
+Pilih gender partner yang ingin kamu cari:`
+
 	MsgSearchChooseMode = `🔍 *Pilih Mode Pencarian:*
 
 🎲 *Random* - Cari partner secara acak
