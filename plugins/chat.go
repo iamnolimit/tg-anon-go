@@ -64,7 +64,7 @@ func (p *ChatPlugin) HandleCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Messa
 	return nil
 }
 
-// handleSearch menangani pencarian partner - menampilkan pilihan mode
+// handleSearch menangani pencarian partner - langsung cari otomatis
 func (p *ChatPlugin) handleSearch(ctx context.Context, bot *tgbotapi.BotAPI, chatID, userID int64) error {
 	// Check if user is registered
 	isRegistered, _ := databases.GetVarBool(ctx, userID, constants.VarIsRegistered)
@@ -95,51 +95,13 @@ func (p *ChatPlugin) handleSearch(ctx context.Context, bot *tgbotapi.BotAPI, cha
 	// Update last active
 	databases.UpdateLastActive(ctx, userID)
 
-	// Show gender preference options first
-	return p.showGenderPreferenceOptions(bot, chatID)
+	// Langsung mulai pencarian otomatis (terdekat dulu, lalu random)
+	return p.doSearchAuto(ctx, bot, chatID, userID)
 }
 
-// showGenderPreferenceOptions menampilkan pilihan gender preference
-func (p *ChatPlugin) showGenderPreferenceOptions(bot *tgbotapi.BotAPI, chatID int64) error {
-	msg := tgbotapi.NewMessage(chatID, constants.MsgSearchChooseGender)
-	msg.ParseMode = "Markdown"
-	
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("👨 Pria", "gender_pref_pria"),
-			tgbotapi.NewInlineKeyboardButtonData("👩 Wanita", "gender_pref_wanita"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🌈 Lainnya", "gender_pref_lainnya"),
-			tgbotapi.NewInlineKeyboardButtonData("🎲 Semua", "gender_pref_any"),
-		),
-	)
-	msg.ReplyMarkup = keyboard
-	
-	_, err := bot.Send(msg)
-	return err
-}
-
-// showSearchModeOptions menampilkan pilihan mode pencarian
-func (p *ChatPlugin) showSearchModeOptions(bot *tgbotapi.BotAPI, chatID int64) error {
-	msg := tgbotapi.NewMessage(chatID, constants.MsgSearchChooseMode)
-	msg.ParseMode = "Markdown"
-	
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎲 Random", "search_random"),
-			tgbotapi.NewInlineKeyboardButtonData("📍 Terdekat", "search_nearby"),
-		),
-	)
-	msg.ReplyMarkup = keyboard
-	
-	_, err := bot.Send(msg)
-	return err
-}
-
-// doSearchRandom melakukan pencarian random
-func (p *ChatPlugin) doSearchRandom(ctx context.Context, bot *tgbotapi.BotAPI, chatID, userID int64) error {
-	log.Printf("🔍 User %d mencari partner (random)...", userID)
+// doSearchAuto melakukan pencarian otomatis (terdekat dulu, lalu random)
+func (p *ChatPlugin) doSearchAuto(ctx context.Context, bot *tgbotapi.BotAPI, chatID, userID int64) error {
+	log.Printf("🔍 User %d mencari partner (auto)...", userID)
 	
 	// Set user status to searching
 	err := databases.SetUserStatus(ctx, userID, constants.StatusSearching)
@@ -148,106 +110,42 @@ func (p *ChatPlugin) doSearchRandom(ctx context.Context, bot *tgbotapi.BotAPI, c
 		return p.sendMessage(bot, chatID, constants.MsgError)
 	}
 
-	// Store search mode
-	databases.SetVar(ctx, userID, constants.VarSearchMode, constants.SearchModeRandom)
-
-	// Publish to Redis matcher
-	if p.matcher != nil {
-		if err := p.matcher.PublishSearch(ctx, userID, constants.SearchModeRandom, 0, 0); err != nil {
-			log.Printf("Error publishing search to Redis: %v", err)
-			return p.sendMessage(bot, chatID, constants.MsgError)
-		}
-	}
-
-	log.Printf("✅ User %d sekarang status: searching (random mode, published to Redis)", userID)
-	return p.sendMessage(bot, chatID, constants.MsgSearching)
-}
-
-// doSearchNearby melakukan pencarian berdasarkan lokasi terdekat
-func (p *ChatPlugin) doSearchNearby(ctx context.Context, bot *tgbotapi.BotAPI, chatID, userID int64) error {
-	// Check if user has location
-	if !databases.HasLocation(ctx, userID) {
-		return p.sendMessage(bot, chatID, constants.MsgSearchNearbyNoLocation)
-	}
-
-	log.Printf("🔍 User %d mencari partner (nearby)...", userID)
+	// Check if user has location - use nearby mode, else random
+	var searchMode string
+	var lat, lon float64
 	
-	// Set user status to searching
-	err := databases.SetUserStatus(ctx, userID, constants.StatusSearching)
-	if err != nil {
-		log.Printf("Error setting user status: %v", err)
-		return p.sendMessage(bot, chatID, constants.MsgError)
+	if databases.HasLocation(ctx, userID) {
+		searchMode = constants.SearchModeNearby
+		lat, _ = databases.GetVarFloat64(ctx, userID, constants.VarLatitude)
+		lon, _ = databases.GetVarFloat64(ctx, userID, constants.VarLongitude)
+		log.Printf("📍 User %d has location, using nearby mode", userID)
+	} else {
+		searchMode = constants.SearchModeRandom
+		log.Printf("🎲 User %d no location, using random mode", userID)
 	}
 
 	// Store search mode
-	databases.SetVar(ctx, userID, constants.VarSearchMode, constants.SearchModeNearby)
-
-	// Get user location
-	lat, _ := databases.GetVarFloat64(ctx, userID, constants.VarLatitude)
-	lon, _ := databases.GetVarFloat64(ctx, userID, constants.VarLongitude)
+	databases.SetVar(ctx, userID, constants.VarSearchMode, searchMode)
 
 	// Publish to Redis matcher
 	if p.matcher != nil {
-		if err := p.matcher.PublishSearch(ctx, userID, constants.SearchModeNearby, lat, lon); err != nil {
+		if err := p.matcher.PublishSearch(ctx, userID, searchMode, lat, lon); err != nil {
 			log.Printf("Error publishing search to Redis: %v", err)
 			return p.sendMessage(bot, chatID, constants.MsgError)
 		}
 	}
 
-	log.Printf("✅ User %d sekarang status: searching (nearby mode, published to Redis)", userID)
+	log.Printf("✅ User %d sekarang status: searching (%s mode, published to Redis)", userID, searchMode)
 	return p.sendMessage(bot, chatID, constants.MsgSearching)
 }
 
 // HandleCallbackQuery menangani callback dari inline keyboard
 func (p *ChatPlugin) HandleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) error {
 	ctx := context.Background()
-	chatID := callback.Message.Chat.ID
-	userID := callback.From.ID
 
 	// Handle warn callback (from log group)
 	if strings.HasPrefix(callback.Data, constants.CallbackWarnUser) {
 		return p.handleWarnCallback(ctx, bot, callback)
-	}
-	// Answer callback to remove loading state
-	callbackResponse := tgbotapi.NewCallback(callback.ID, "")
-	bot.Send(callbackResponse)
-
-	// Delete the message
-	deleteMsg := tgbotapi.NewDeleteMessage(chatID, callback.Message.MessageID)
-	bot.Send(deleteMsg)
-
-	// Handle gender preference callbacks
-	if strings.HasPrefix(callback.Data, "gender_pref_") {
-		genderPref := strings.TrimPrefix(callback.Data, "gender_pref_")
-		
-		// Map callback to actual gender value
-		var genderValue string
-		switch genderPref {
-		case "pria":
-			genderValue = constants.GenderMale
-		case "wanita":
-			genderValue = constants.GenderFemale
-		case "lainnya":
-			genderValue = constants.GenderOther
-		case "any":
-			genderValue = constants.GenderAny
-		default:
-			genderValue = constants.GenderAny
-		}
-		
-		// Save gender preference
-		databases.SetVar(ctx, userID, constants.VarSearchGender, genderValue)
-		log.Printf("User %d set gender preference: %s", userID, genderValue)
-		
-		// Show search mode options
-		return p.showSearchModeOptions(bot, chatID)
-	}
-
-	switch callback.Data {
-	case "search_random":
-		return p.doSearchRandom(ctx, bot, chatID, userID)
-	case "search_nearby":
-		return p.doSearchNearby(ctx, bot, chatID, userID)
 	}
 
 	return nil
@@ -255,10 +153,7 @@ func (p *ChatPlugin) HandleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotap
 
 // CanHandleCallback mengecek apakah plugin bisa handle callback ini
 func (p *ChatPlugin) CanHandleCallback(data string) bool {
-	return data == "search_random" || 
-		data == "search_nearby" || 
-		strings.HasPrefix(data, "gender_pref_") ||
-		strings.HasPrefix(data, constants.CallbackWarnUser)
+	return strings.HasPrefix(data, constants.CallbackWarnUser)
 }
 
 // handleNext skip partner dan cari baru

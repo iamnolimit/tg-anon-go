@@ -181,15 +181,6 @@ Bagikan lokasi baru kamu:`
 
 // Search Messages
 const (
-	MsgSearchChooseGender = `🔍 *Cari Partner Berdasarkan Gender:*
-
-Pilih gender partner yang ingin kamu cari:`
-
-	MsgSearchChooseMode = `🔍 *Pilih Mode Pencarian:*
-
-🎲 *Random* - Cari partner secara acak
-📍 *Terdekat* - Cari partner di sekitar lokasi kamu`
-
 	MsgSearchNearbyNoLocation = "⚠️ Kamu belum menyimpan lokasi. Silakan update lokasi dengan /updatelocation"
 	MsgSearchNearbySearching  = "🔍 Mencari partner di sekitar lokasi kamu... Mohon tunggu."
 	MsgSearchNearbyNotFound   = "😔 Tidak ada partner terdekat yang tersedia saat ini.\n\nMencari secara random..."
@@ -217,21 +208,21 @@ const (
 /ban <user_id> - Ban user
 /unban <user_id> - Unban user`
 
-	MsgAdminOnly        = "❌ Command ini hanya untuk admin."
-	MsgBroadcastStart   = "📢 Memulai broadcast ke %d users..."
-	MsgBroadcastDone    = "✅ Broadcast selesai!\n\n📊 Sukses: %d\n❌ Gagal: %d"
-	MsgResetDBConfirm   = "⚠️ *PERINGATAN!*\n\nApakah kamu yakin ingin reset database?\nSemua data akan DIHAPUS PERMANEN!\n\nKetik /confirmreset untuk konfirmasi."
-	MsgResetDBSuccess   = "✅ Database berhasil direset!"
-	MsgAdsAdded         = "✅ Ads berhasil ditambahkan dengan ID: %d"
-	MsgAdsDeleted       = "✅ Ads dengan ID %d berhasil dihapus."
-	MsgAdsNotFound      = "❌ Ads dengan ID %d tidak ditemukan."
-	MsgAdsToggled       = "✅ Ads sekarang: *%s*"
-	MsgAdsList          = "📋 *Daftar Ads:*\n\n%s"
-	MsgAdsEmpty         = "📋 Tidak ada ads yang tersedia."
-	MsgUserBanned       = "✅ User %d berhasil dibanned."
-	MsgUserUnbanned     = "✅ User %d berhasil diunban."
-	MsgInvalidUserID    = "❌ User ID tidak valid."
-	MsgStatsInfo        = `📊 *Statistik Bot*
+	MsgAdminOnly      = "❌ Command ini hanya untuk admin."
+	MsgBroadcastStart = "📢 Memulai broadcast ke %d users..."
+	MsgBroadcastDone  = "✅ Broadcast selesai!\n\n📊 Sukses: %d\n❌ Gagal: %d"
+	MsgResetDBConfirm = "⚠️ *PERINGATAN!*\n\nApakah kamu yakin ingin reset database?\nSemua data akan DIHAPUS PERMANEN!\n\nKetik /confirmreset untuk konfirmasi."
+	MsgResetDBSuccess = "✅ Database berhasil direset!"
+	MsgAdsAdded       = "✅ Ads berhasil ditambahkan dengan ID: %d"
+	MsgAdsDeleted     = "✅ Ads dengan ID %d berhasil dihapus."
+	MsgAdsNotFound    = "❌ Ads dengan ID %d tidak ditemukan."
+	MsgAdsToggled     = "✅ Ads sekarang: *%s*"
+	MsgAdsList        = "📋 *Daftar Ads:*\n\n%s"
+	MsgAdsEmpty       = "📋 Tidak ada ads yang tersedia."
+	MsgUserBanned     = "✅ User %d berhasil dibanned."
+	MsgUserUnbanned   = "✅ User %d berhasil diunban."
+	MsgInvalidUserID  = "❌ User ID tidak valid."
+	MsgStatsInfo      = `📊 *Statistik Bot*
 
 👥 Total Users: *%d*
 💬 Active Chats: *%d*
@@ -282,11 +273,11 @@ const (
 📝 Type: *%s*
 ⏰ Time: %s`
 
-	MsgWarnSuccess    = "⚠️ User %d telah diberi peringatan (%d/%d)"
-	MsgWarnAutoBan    = "🚫 User %d telah dibanned otomatis setelah %d peringatan!"
-	MsgWarnedNotify   = "⚠️ *PERINGATAN!*\n\nKamu mendapat peringatan dari admin karena mengirim konten tidak pantas.\n\n⚠️ Warning: *%d/%d*\n\nJika mencapai %d warning, kamu akan dibanned otomatis!"
-	MsgWarnedBanned   = "🚫 *KAMU TELAH DIBANNED!*\n\nKamu telah menerima %d peringatan karena mengirim konten tidak pantas dan sekarang dibanned dari bot ini."
-	MsgMediaDeleted   = "🗑️ Media dari user yang mendapat peringatan telah dihapus."
+	MsgWarnSuccess  = "⚠️ User %d telah diberi peringatan (%d/%d)"
+	MsgWarnAutoBan  = "🚫 User %d telah dibanned otomatis setelah %d peringatan!"
+	MsgWarnedNotify = "⚠️ *PERINGATAN!*\n\nKamu mendapat peringatan dari admin karena mengirim konten tidak pantas.\n\n⚠️ Warning: *%d/%d*\n\nJika mencapai %d warning, kamu akan dibanned otomatis!"
+	MsgWarnedBanned = "🚫 *KAMU TELAH DIBANNED!*\n\nKamu telah menerima %d peringatan karena mengirim konten tidak pantas dan sekarang dibanned dari bot ini."
+	MsgMediaDeleted = "🗑️ Media dari user yang mendapat peringatan telah dihapus."
 )
 
 // Callback Prefixes

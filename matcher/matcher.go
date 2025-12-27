@@ -22,22 +22,20 @@ const (
 	ChannelSearchNearby = "search:nearby"
 
 	// Redis keys
-	KeySearchingUsers = "searching:users"        // Set of all searching user IDs
-	KeyUserData       = "user:%d:data"           // Hash of user search data
-	KeyMatchLock      = "match:lock:%d"          // Lock to prevent double matching
-	LockExpiration    = 10 * time.Second         // Lock expiration time
-	UserDataTTL       = 5 * time.Minute          // User data expiration
+	KeySearchingUsers = "searching:users" // Set of all searching user IDs
+	KeyUserData       = "user:%d:data"    // Hash of user search data
+	KeyMatchLock      = "match:lock:%d"   // Lock to prevent double matching
+	LockExpiration    = 10 * time.Second  // Lock expiration time
+	UserDataTTL       = 5 * time.Minute   // User data expiration
 )
 
 // SearchRequest represents a search request from a user
 type SearchRequest struct {
-	UserID         int64   `json:"user_id"`
-	SearchMode     string  `json:"search_mode"`
-	Gender         string  `json:"gender"`          // User's gender
-	SearchGender   string  `json:"search_gender"`   // Preferred partner gender
-	Latitude       float64 `json:"latitude,omitempty"`
-	Longitude      float64 `json:"longitude,omitempty"`
-	Timestamp      int64   `json:"timestamp"`
+	UserID     int64   `json:"user_id"`
+	SearchMode string  `json:"search_mode"`
+	Latitude   float64 `json:"latitude,omitempty"`
+	Longitude  float64 `json:"longitude,omitempty"`
+	Timestamp  int64   `json:"timestamp"`
 }
 
 // Matcher menangani realtime matching menggunakan Redis Pub/Sub
@@ -130,23 +128,12 @@ func (m *Matcher) Stop() {
 
 // PublishSearch publishes a search request to Redis
 func (m *Matcher) PublishSearch(ctx context.Context, userID int64, searchMode string, lat, lon float64) error {
-	// Get user's gender and gender preference
-	userGender, _ := databases.GetVar(ctx, userID, constants.VarGender)
-	searchGender, _ := databases.GetVar(ctx, userID, constants.VarSearchGender)
-	
-	// Default to "any" if not set
-	if searchGender == "" {
-		searchGender = constants.GenderAny
-	}
-	
 	req := SearchRequest{
-		UserID:       userID,
-		SearchMode:   searchMode,
-		Gender:       userGender,
-		SearchGender: searchGender,
-		Latitude:     lat,
-		Longitude:    lon,
-		Timestamp:    time.Now().Unix(),
+		UserID:     userID,
+		SearchMode: searchMode,
+		Latitude:   lat,
+		Longitude:  lon,
+		Timestamp:  time.Now().Unix(),
 	}
 
 	data, err := json.Marshal(req)
@@ -175,7 +162,7 @@ func (m *Matcher) PublishSearch(ctx context.Context, userID int64, searchMode st
 		return fmt.Errorf("failed to publish search request: %w", err)
 	}
 
-	log.Printf("📡 Published search request: User %d, Mode: %s, Gender: %s, Looking for: %s", userID, searchMode, userGender, searchGender)
+	log.Printf("📡 Published search request: User %d, Mode: %s", userID, searchMode)
 	return nil
 }
 
@@ -309,12 +296,6 @@ func (m *Matcher) handleRandomSearch(req *SearchRequest) {
 			continue
 		}
 
-		// Check gender compatibility
-		if !isGenderCompatible(req, &partnerReq) {
-			log.Printf("⏭️ Skip user %d - Gender not compatible with %d", partnerID, req.UserID)
-			continue
-		}
-
 		// Try to lock partner
 		partnerLockKey := fmt.Sprintf(KeyMatchLock, partnerID)
 		partnerLocked, err := m.rdb.SetNX(ctx, partnerLockKey, "1", LockExpiration).Result()
@@ -346,14 +327,14 @@ func (m *Matcher) handleRandomSearch(req *SearchRequest) {
 		// Notify both users
 		m.notifyMatch(req.UserID, partnerID, constants.SearchModeRandom, 0)
 
-		log.Printf("✅ Random Match: User %d <-> User %d (Gender: %s/%s)", req.UserID, partnerID, req.Gender, partnerReq.Gender)
+		log.Printf("✅ Random Match: User %d <-> User %d", req.UserID, partnerID)
 		return
 	}
 
 	log.Printf("⏳ No partner found for user %d yet (random)", req.UserID)
 }
 
-// handleNearbySearch handles nearby matching
+// handleNearbySearch handles nearby matching with distance-based priority
 func (m *Matcher) handleNearbySearch(req *SearchRequest) {
 	ctx := context.Background()
 
@@ -387,9 +368,14 @@ func (m *Matcher) handleNearbySearch(req *SearchRequest) {
 		return
 	}
 
-	maxDistance := 50.0 // 50 km
+	// Collect all potential partners with their distances
+	type partnerWithDistance struct {
+		partnerID int64
+		distance  float64
+		req       SearchRequest
+	}
+	var candidates []partnerWithDistance
 
-	// Find nearby partner
 	for _, memberStr := range members {
 		var partnerID int64
 		fmt.Sscanf(memberStr, "%d", &partnerID)
@@ -409,62 +395,73 @@ func (m *Matcher) handleNearbySearch(req *SearchRequest) {
 		if err := json.Unmarshal([]byte(partnerData), &partnerReq); err != nil {
 			continue
 		}
-		// Check if partner has location
-		if partnerReq.Latitude == 0 && partnerReq.Longitude == 0 {
-			continue
+
+		// Calculate distance (use max distance if partner has no location)
+		var distance float64
+		if partnerReq.Latitude != 0 || partnerReq.Longitude != 0 {
+			distance = calculateDistance(req.Latitude, req.Longitude, partnerReq.Latitude, partnerReq.Longitude)
+		} else {
+			distance = 9999 // No location, lowest priority
 		}
 
-		// Calculate distance
-		distance := calculateDistance(req.Latitude, req.Longitude, partnerReq.Latitude, partnerReq.Longitude)
-		if distance > maxDistance {
-			continue
-		}
+		candidates = append(candidates, partnerWithDistance{
+			partnerID: partnerID,
+			distance:  distance,
+			req:       partnerReq,
+		})
+	}
 
-		// Check gender compatibility
-		if !isGenderCompatible(req, &partnerReq) {
-			log.Printf("⏭️ Skip nearby user %d - Gender not compatible with %d", partnerID, req.UserID)
-			continue
+	// Sort candidates by distance (closest first)
+	for i := 0; i < len(candidates)-1; i++ {
+		for j := i + 1; j < len(candidates); j++ {
+			if candidates[j].distance < candidates[i].distance {
+				candidates[i], candidates[j] = candidates[j], candidates[i]
+			}
 		}
+	}
 
+	// Try to match with closest available partner
+	for _, candidate := range candidates {
 		// Try to lock partner
-		partnerLockKey := fmt.Sprintf(KeyMatchLock, partnerID)
+		partnerLockKey := fmt.Sprintf(KeyMatchLock, candidate.partnerID)
 		partnerLocked, err := m.rdb.SetNX(ctx, partnerLockKey, "1", LockExpiration).Result()
 		if err != nil || !partnerLocked {
 			continue
 		}
 
 		// Check if partner still searching
-		partnerStatus, _ := databases.GetVar(ctx, partnerID, constants.VarStatus)
+		partnerStatus, _ := databases.GetVar(ctx, candidate.partnerID, constants.VarStatus)
 		if partnerStatus != constants.StatusSearching {
 			m.rdb.Del(ctx, partnerLockKey)
-			m.RemoveSearchingUser(ctx, partnerID)
+			m.RemoveSearchingUser(ctx, candidate.partnerID)
 			continue
 		}
 
 		// Match found! Connect users
-		_, err = databases.ConnectUsers(ctx, req.UserID, partnerID)
+		_, err = databases.ConnectUsers(ctx, req.UserID, candidate.partnerID)
 		if err != nil {
 			log.Printf("Error connecting users: %v", err)
 			m.rdb.Del(ctx, partnerLockKey)
 			continue
 		}
+
 		// Remove both from searching
 		m.RemoveSearchingUser(ctx, req.UserID)
-		m.RemoveSearchingUser(ctx, partnerID)
+		m.RemoveSearchingUser(ctx, candidate.partnerID)
 		m.rdb.Del(ctx, partnerLockKey)
 
-		// Notify both users
-		m.notifyMatch(req.UserID, partnerID, constants.SearchModeNearby, distance)
-
-		log.Printf("✅ Nearby Match: User %d <-> User %d (%.2f km, Gender: %s/%s)", req.UserID, partnerID, distance, req.Gender, partnerReq.Gender)
+		// Notify both users (show distance if nearby)
+		if candidate.distance < 9999 {
+			m.notifyMatch(req.UserID, candidate.partnerID, constants.SearchModeNearby, candidate.distance)
+			log.Printf("✅ Nearby Match: User %d <-> User %d (%.2f km)", req.UserID, candidate.partnerID, candidate.distance)
+		} else {
+			m.notifyMatch(req.UserID, candidate.partnerID, constants.SearchModeRandom, 0)
+			log.Printf("✅ Random Match (fallback): User %d <-> User %d", req.UserID, candidate.partnerID)
+		}
 		return
 	}
 
-	log.Printf("⏳ No nearby partner found for user %d, trying random...", req.UserID)
-
-	// Fallback to random matching
-	req.SearchMode = constants.SearchModeRandom
-	m.handleRandomSearch(req)
+	log.Printf("⏳ No partner found for user %d yet (nearby)", req.UserID)
 }
 
 // cleanupWorker removes stale searching users periodically
@@ -558,25 +555,4 @@ func formatDistance(distance float64) string {
 		return "< 1 km"
 	}
 	return fmt.Sprintf("%.1f km", distance)
-}
-
-// isGenderCompatible checks if two users' gender preferences match
-func isGenderCompatible(user1, user2 *SearchRequest) bool {
-	// If both want "any" gender, they're compatible
-	if user1.SearchGender == constants.GenderAny && user2.SearchGender == constants.GenderAny {
-		return true
-	}
-	
-	// If user1 wants "any" but user2 has specific preference
-	if user1.SearchGender == constants.GenderAny {
-		return user2.SearchGender == constants.GenderAny || user2.SearchGender == user1.Gender
-	}
-	
-	// If user2 wants "any" but user1 has specific preference
-	if user2.SearchGender == constants.GenderAny {
-		return user1.SearchGender == constants.GenderAny || user1.SearchGender == user2.Gender
-	}
-	
-	// Both have specific preferences - they must match each other's gender
-	return user1.SearchGender == user2.Gender && user2.SearchGender == user1.Gender
 }
