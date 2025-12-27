@@ -468,7 +468,8 @@ func (m *Matcher) handleNearbySearch(req *SearchRequest) {
 func (m *Matcher) cleanupWorker() {
 	defer m.wg.Done()
 
-	ticker := time.NewTicker(30 * time.Second)
+	// Cleanup every 2 minutes (reduced from 30s to save resources)
+	ticker := time.NewTicker(2 * time.Minute)
 	defer ticker.Stop()
 
 	for {

@@ -37,7 +37,7 @@ func main() {
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatalf("Failed to create bot: %v", err)
-	}	// Set debug mode
+	} // Set debug mode
 	if os.Getenv("BOT_DEBUG") == "true" {
 		bot.Debug = true
 	}
@@ -71,15 +71,24 @@ func main() {
 	port := os.Getenv("PORT")
 	usePolling := os.Getenv("USE_POLLING") == "true"
 	webhookURL := os.Getenv("WEBHOOK_URL")
-	appURL := os.Getenv("APP_URL") // For self-ping to keep dyno awake
+
+	// Self-ping is DISABLED by default to save dyno hours
+	// Use external services like UptimeRobot or cron-job.org instead
+	// Set ENABLE_SELF_PING=true to enable built-in self-ping
+	enableSelfPing := os.Getenv("ENABLE_SELF_PING") == "true"
+	appURL := os.Getenv("APP_URL")
 
 	// If USE_POLLING is true or no PORT (local), use polling mode
 	if usePolling || port == "" {
 		// Keep HTTP server alive for Heroku health check if PORT is set
 		if port != "" {
 			go startHealthServer(port)
-			// Start self-ping to prevent Heroku idle
-			startSelfPing(appURL)
+			// Start self-ping only if explicitly enabled
+			if enableSelfPing {
+				startSelfPing(appURL)
+			} else {
+				log.Println("💡 Self-ping disabled. Use external service (UptimeRobot/cron-job.org) to keep dyno awake")
+			}
 		}
 		runPollingMode(bot, pluginManager)
 	} else if webhookURL != "" {
@@ -89,8 +98,12 @@ func main() {
 		// PORT set but no webhook URL - use polling with health server
 		log.Println("⚠️ PORT is set but WEBHOOK_URL is empty. Using polling mode...")
 		go startHealthServer(port)
-		// Start self-ping to prevent Heroku idle
-		startSelfPing(appURL)
+		// Start self-ping only if explicitly enabled
+		if enableSelfPing {
+			startSelfPing(appURL)
+		} else {
+			log.Println("💡 Self-ping disabled. Use external service (UptimeRobot/cron-job.org) to keep dyno awake")
+		}
 		runPollingMode(bot, pluginManager)
 	}
 }
@@ -112,13 +125,17 @@ func startHealthServer(port string) {
 }
 
 // startSelfPing starts a self-ping routine to keep the Heroku dyno awake
+// NOTE: This uses dyno hours! Consider using external services instead:
+// - UptimeRobot (free): https://uptimerobot.com
+// - cron-job.org (free): https://cron-job.org
 func startSelfPing(appURL string) {
 	if appURL == "" {
 		log.Println("⚠️ APP_URL not set, self-ping disabled")
 		return
 	}
 
-	ticker := time.NewTicker(25 * time.Minute) // Ping every 25 minutes (before 30 min idle)
+	// Ping every 28 minutes (Heroku idles after 30 min)
+	ticker := time.NewTicker(28 * time.Minute)
 	go func() {
 		for range ticker.C {
 			resp, err := http.Get(appURL + "/health")
@@ -130,7 +147,7 @@ func startSelfPing(appURL string) {
 			}
 		}
 	}()
-	log.Printf("🔄 Self-ping enabled for %s", appURL)
+	log.Printf("🔄 Self-ping enabled for %s (every 28 min)", appURL)
 }
 
 // runWebhookMode menjalankan bot dengan webhook (untuk Heroku)
