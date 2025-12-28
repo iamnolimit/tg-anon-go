@@ -102,7 +102,11 @@ func (m *Matcher) Start() {
 	m.wg.Add(1)
 	go m.cleanupWorker()
 
-	log.Println("🚀 Redis Matcher started (Random + Nearby + Cleanup)")
+	// Start periodic matching worker to fix race conditions
+	m.wg.Add(1)
+	go m.matchingWorker()
+
+	log.Println("🚀 Redis Matcher started (Random + Nearby + Cleanup + Periodic Matcher)")
 }
 
 // Stop menghentikan matcher
@@ -502,6 +506,189 @@ func (m *Matcher) cleanup() {
 		if status != constants.StatusSearching {
 			m.RemoveSearchingUser(ctx, userID)
 		}
+	}
+}
+
+// matchingWorker runs periodically to retry matching stuck users
+func (m *Matcher) matchingWorker() {
+	defer m.wg.Done()
+
+	// Run matching every 5 seconds to prevent stuck users
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	log.Println("🔄 Periodic matching worker started (every 5s)")
+
+	for {
+		select {
+		case <-ticker.C:
+			m.retryMatchAllUsers()
+		case <-m.stopChan:
+			return
+		case <-m.ctx.Done():
+			return
+		}
+	}
+}
+
+// retryMatchAllUsers tries to match all users currently in the searching set
+func (m *Matcher) retryMatchAllUsers() {
+	ctx := context.Background()
+
+	// Get all searching users
+	members, err := m.rdb.SMembers(ctx, KeySearchingUsers).Result()
+	if err != nil {
+		return
+	}
+
+	// Need at least 2 users to match
+	if len(members) < 2 {
+		return
+	}
+
+	log.Printf("🔄 Retry matching %d searching users...", len(members))
+
+	// Collect valid searching users with their data
+	type userWithData struct {
+		userID    int64
+		searchReq SearchRequest
+	}
+	var validUsers []userWithData
+
+	for _, memberStr := range members {
+		var userID int64
+		fmt.Sscanf(memberStr, "%d", &userID)
+
+		// Verify still searching in database
+		status, _ := databases.GetVar(ctx, userID, constants.VarStatus)
+		if status != constants.StatusSearching {
+			m.RemoveSearchingUser(ctx, userID)
+			continue
+		}
+
+		// Get user search data
+		userKey := fmt.Sprintf(KeyUserData, userID)
+		userData, err := m.rdb.Get(ctx, userKey).Result()
+		if err != nil {
+			// No data means TTL expired, refresh it
+			searchMode, _ := databases.GetVar(ctx, userID, constants.VarSearchMode)
+			if searchMode == "" {
+				searchMode = constants.SearchModeRandom
+			}
+			var lat, lon float64
+			if searchMode == constants.SearchModeNearby {
+				lat, _ = databases.GetVarFloat64(ctx, userID, constants.VarLatitude)
+				lon, _ = databases.GetVarFloat64(ctx, userID, constants.VarLongitude)
+			}
+
+			req := SearchRequest{
+				UserID:     userID,
+				SearchMode: searchMode,
+				Latitude:   lat,
+				Longitude:  lon,
+				Timestamp:  time.Now().Unix(),
+			}
+			data, _ := json.Marshal(req)
+			m.rdb.Set(ctx, userKey, data, UserDataTTL)
+
+			validUsers = append(validUsers, userWithData{userID: userID, searchReq: req})
+			continue
+		}
+
+		var req SearchRequest
+		if err := json.Unmarshal([]byte(userData), &req); err != nil {
+			continue
+		}
+		validUsers = append(validUsers, userWithData{userID: userID, searchReq: req})
+	}
+
+	// Try to match users pairwise
+	matched := make(map[int64]bool)
+
+	for i := 0; i < len(validUsers); i++ {
+		if matched[validUsers[i].userID] {
+			continue
+		}
+
+		for j := i + 1; j < len(validUsers); j++ {
+			if matched[validUsers[j].userID] {
+				continue
+			}
+
+			user1 := validUsers[i]
+			user2 := validUsers[j]
+
+			// Try to lock both users
+			lockKey1 := fmt.Sprintf(KeyMatchLock, user1.userID)
+			lockKey2 := fmt.Sprintf(KeyMatchLock, user2.userID)
+
+			locked1, err := m.rdb.SetNX(ctx, lockKey1, "1", LockExpiration).Result()
+			if err != nil || !locked1 {
+				continue
+			}
+
+			locked2, err := m.rdb.SetNX(ctx, lockKey2, "1", LockExpiration).Result()
+			if err != nil || !locked2 {
+				m.rdb.Del(ctx, lockKey1)
+				continue
+			}
+
+			// Double-check both still searching
+			status1, _ := databases.GetVar(ctx, user1.userID, constants.VarStatus)
+			status2, _ := databases.GetVar(ctx, user2.userID, constants.VarStatus)
+
+			if status1 != constants.StatusSearching || status2 != constants.StatusSearching {
+				m.rdb.Del(ctx, lockKey1)
+				m.rdb.Del(ctx, lockKey2)
+				if status1 != constants.StatusSearching {
+					m.RemoveSearchingUser(ctx, user1.userID)
+				}
+				if status2 != constants.StatusSearching {
+					m.RemoveSearchingUser(ctx, user2.userID)
+				}
+				continue
+			}
+
+			// Match found! Connect users
+			_, err = databases.ConnectUsers(ctx, user1.userID, user2.userID)
+			if err != nil {
+				log.Printf("Error connecting users in retry: %v", err)
+				m.rdb.Del(ctx, lockKey1)
+				m.rdb.Del(ctx, lockKey2)
+				continue
+			}
+
+			// Remove both from searching
+			m.RemoveSearchingUser(ctx, user1.userID)
+			m.RemoveSearchingUser(ctx, user2.userID)
+			m.rdb.Del(ctx, lockKey1)
+			m.rdb.Del(ctx, lockKey2)
+
+			// Calculate distance if both have location
+			var distance float64
+			var searchMode = constants.SearchModeRandom
+			if user1.searchReq.Latitude != 0 && user1.searchReq.Longitude != 0 &&
+				user2.searchReq.Latitude != 0 && user2.searchReq.Longitude != 0 {
+				distance = calculateDistance(
+					user1.searchReq.Latitude, user1.searchReq.Longitude,
+					user2.searchReq.Latitude, user2.searchReq.Longitude,
+				)
+				searchMode = constants.SearchModeNearby
+			}
+
+			// Notify both users
+			m.notifyMatch(user1.userID, user2.userID, searchMode, distance)
+
+			matched[user1.userID] = true
+			matched[user2.userID] = true
+
+			log.Printf("✅ Retry Match: User %d <-> User %d", user1.userID, user2.userID)
+			break
+		}
+	}
+
+	if len(matched) > 0 {
+		log.Printf("🎉 Matched %d users in retry cycle", len(matched))
 	}
 }
 
