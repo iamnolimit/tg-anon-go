@@ -188,8 +188,8 @@ func (p *AdminPlugin) handleBroadcast(ctx context.Context, bot *tgbotapi.BotAPI,
 
 // getAllRegisteredUsers mengambil semua user ID yang terdaftar
 func (p *AdminPlugin) getAllRegisteredUsers(ctx context.Context) ([]int64, error) {
-	query := `SELECT DISTINCT user_id FROM vars WHERE var_key = $1 AND var_value = $2`
-	rows, err := databases.DB.Query(ctx, query, constants.VarIsRegistered, "true")
+	query := `SELECT telegram_id FROM users`
+	rows, err := databases.DB.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
