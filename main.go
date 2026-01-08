@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"tg-anon-go/constants"
 	"tg-anon-go/databases"
 	"tg-anon-go/matcher"
 	"tg-anon-go/plugins"
@@ -59,6 +61,9 @@ func main() {
 
 	// Start matcher
 	redisMatcher.Start()
+
+	// Start auto-close checker for old sessions
+	go startAutoCloseChecker(bot)
 
 	// Initialize plugin manager
 	pluginManager := plugins.NewManager()
@@ -237,4 +242,57 @@ func runPollingMode(bot *tgbotapi.BotAPI, pluginManager *plugins.Manager) {
 			return
 		}
 	}
+}
+
+// startAutoCloseChecker memulai background task untuk menutup chat yang sudah lama
+func startAutoCloseChecker(bot *tgbotapi.BotAPI) {
+	log.Println("🕐 Auto-close checker started (checks every 1 hour for sessions > 2 days)")
+
+	// Run immediately on startup
+	closeOldSessions(bot)
+
+	// Then run every hour
+	ticker := time.NewTicker(1 * time.Hour)
+	for range ticker.C {
+		closeOldSessions(bot)
+	}
+}
+
+// closeOldSessions menutup semua sesi chat yang sudah lebih dari 2 hari
+func closeOldSessions(bot *tgbotapi.BotAPI) {
+	ctx := context.Background()
+
+	// Get sessions older than 2 days (48 hours)
+	oldSessions, err := databases.GetOldActiveSessions(ctx, 48*time.Hour)
+	if err != nil {
+		log.Printf("Error getting old sessions: %v", err)
+		return
+	}
+
+	if len(oldSessions) == 0 {
+		return
+	}
+
+	log.Printf("🔄 Found %d sessions older than 2 days, closing...", len(oldSessions))
+
+	for _, session := range oldSessions {
+		// End the session
+		if err := databases.DisconnectUsers(ctx, session.User1ID, session.User2ID); err != nil {
+			log.Printf("Error disconnecting users %d and %d: %v", session.User1ID, session.User2ID, err)
+			continue
+		}
+
+		// Notify both users
+		msg1 := tgbotapi.NewMessage(session.User1ID, constants.MsgAutoClosedInactive)
+		msg1.ParseMode = "Markdown"
+		bot.Send(msg1)
+
+		msg2 := tgbotapi.NewMessage(session.User2ID, constants.MsgAutoClosedInactive)
+		msg2.ParseMode = "Markdown"
+		bot.Send(msg2)
+
+		log.Printf("✅ Auto-closed session %d (users: %d, %d)", session.ID, session.User1ID, session.User2ID)
+	}
+
+	log.Printf("✅ Successfully closed %d old sessions", len(oldSessions))
 }

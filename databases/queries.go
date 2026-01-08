@@ -150,6 +150,33 @@ func GetUserStats(ctx context.Context) (totalUsers int64, activeChats int64, err
 	return
 }
 
+// GetOldActiveSessions mengambil sesi yang sudah aktif lebih lama dari durasi tertentu
+func GetOldActiveSessions(ctx context.Context, maxAge time.Duration) ([]ChatSession, error) {
+	query := `
+		SELECT id, user1_id, user2_id, started_at, ended_at, is_active
+		FROM chat_sessions
+		WHERE is_active = true AND started_at < $1
+		ORDER BY started_at ASC
+	`
+	cutoffTime := time.Now().Add(-maxAge)
+	rows, err := DB.Query(ctx, query, cutoffTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []ChatSession
+	for rows.Next() {
+		var session ChatSession
+		if err := rows.Scan(&session.ID, &session.User1ID, &session.User2ID,
+			&session.StartedAt, &session.EndedAt, &session.IsActive); err != nil {
+			continue
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, nil
+}
+
 // ============================================================
 // HELPER FUNCTIONS MENGGUNAKAN VAR SYSTEM
 // ============================================================
@@ -267,7 +294,7 @@ func ConnectUsers(ctx context.Context, user1ID, user2ID int64) (int64, error) {
 func DisconnectUsers(ctx context.Context, user1ID, user2ID int64) error {
 	// Get session ID
 	sessionID, _ := GetUserSessionID(ctx, user1ID)
-	
+
 	// End session di database
 	if err := EndChatSession(ctx, user1ID, user2ID); err != nil {
 		return err
@@ -344,7 +371,7 @@ func FindNearbySearchingUser(ctx context.Context, userID int64, maxDistanceKm fl
 
 		// Calculate distance
 		distance := CalculateDistance(userLat, userLon, partnerLat, partnerLon)
-		
+
 		// Check if within max distance and is nearest
 		if distance <= maxDistanceKm && (nearestDistance < 0 || distance < nearestDistance) {
 			user, err := GetUserByTelegramID(ctx, partnerID)

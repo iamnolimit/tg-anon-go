@@ -56,7 +56,7 @@ func (p *StartPlugin) handleStart(ctx context.Context, bot *tgbotapi.BotAPI, cha
 	// Register/update user in database
 	username := message.From.UserName
 	firstName := message.From.FirstName
-	
+
 	err := databases.CreateOrUpdateUser(ctx, userID, username, firstName)
 	if err != nil {
 		log.Printf("Error creating user: %v", err)
@@ -79,7 +79,7 @@ func (p *StartPlugin) handleStart(ctx context.Context, bot *tgbotapi.BotAPI, cha
 func (p *StartPlugin) sendWelcomeWithButtons(bot *tgbotapi.BotAPI, chatID int64) error {
 	msg := tgbotapi.NewMessage(chatID, constants.MsgWelcome)
 	msg.ParseMode = "Markdown"
-	
+
 	// Create inline keyboard
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -92,7 +92,7 @@ func (p *StartPlugin) sendWelcomeWithButtons(bot *tgbotapi.BotAPI, chatID int64)
 		),
 	)
 	msg.ReplyMarkup = keyboard
-	
+
 	_, err := bot.Send(msg)
 	return err
 }
@@ -148,7 +148,7 @@ func (p *StartPlugin) HandleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Mess
 
 	// Get registration state
 	regState, _ := databases.GetVar(ctx, userID, constants.VarRegState)
-		switch regState {
+	switch regState {
 	case constants.RegStateAskName:
 		return p.handleNameInput(ctx, bot, chatID, userID, text)
 	case constants.RegStateAskAge:
@@ -204,7 +204,7 @@ func (p *StartPlugin) handleAgeInput(ctx context.Context, bot *tgbotapi.BotAPI, 
 func (p *StartPlugin) sendMessageWithGenderButtons(bot *tgbotapi.BotAPI, chatID int64, text string) error {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "Markdown"
-	
+
 	// Create inline keyboard with gender options
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -216,7 +216,7 @@ func (p *StartPlugin) sendMessageWithGenderButtons(bot *tgbotapi.BotAPI, chatID 
 		),
 	)
 	msg.ReplyMarkup = keyboard
-	
+
 	_, err := bot.Send(msg)
 	return err
 }
@@ -235,11 +235,12 @@ func (p *StartPlugin) handleLocationShare(ctx context.Context, bot *tgbotapi.Bot
 	// Save coordinates
 	databases.SetVar(ctx, userID, constants.VarLatitude, location.Latitude)
 	databases.SetVar(ctx, userID, constants.VarLongitude, location.Longitude)
-	
-	// Format location name with coordinates
-	locationName := fmt.Sprintf("📍 %.4f, %.4f", location.Latitude, location.Longitude)
+
+	// Get city name from coordinates using reverse geocoding
+	cityName := databases.GetCityNameFromCoordinates(location.Latitude, location.Longitude)
+	locationName := fmt.Sprintf("📍 %s", cityName)
 	databases.SetVar(ctx, userID, constants.VarLocation, locationName)
-	
+
 	// Complete registration
 	databases.SetVar(ctx, userID, constants.VarRegState, constants.RegStateDone)
 	databases.SetVar(ctx, userID, constants.VarIsRegistered, true)
@@ -257,7 +258,7 @@ func (p *StartPlugin) handleLocationShare(ctx context.Context, bot *tgbotapi.Bot
 func (p *StartPlugin) sendMessageWithLocationButton(bot *tgbotapi.BotAPI, chatID int64, text string) error {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "Markdown"
-	
+
 	// Create keyboard with location request button
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
@@ -267,7 +268,7 @@ func (p *StartPlugin) sendMessageWithLocationButton(bot *tgbotapi.BotAPI, chatID
 	keyboard.OneTimeKeyboard = true
 	keyboard.ResizeKeyboard = true
 	msg.ReplyMarkup = keyboard
-	
+
 	_, err := bot.Send(msg)
 	return err
 }
@@ -289,21 +290,21 @@ func (p *StartPlugin) CanHandleMessage(message *tgbotapi.Message) bool {
 
 	ctx := context.Background()
 	userID := message.From.ID
-	
+
 	// Check edit state
 	editState, _ := databases.GetVar(ctx, userID, constants.VarEditState)
 	if editState != "" && editState != constants.EditStateNone {
 		return true
 	}
-	
+
 	// Check registration state
 	regState, _ := databases.GetVar(ctx, userID, constants.VarRegState)
-	
+
 	// Handle message jika user dalam proses registrasi
-	return regState == constants.RegStateAskName || 
-		   regState == constants.RegStateAskAge || 
-		   regState == constants.RegStateAskGender ||
-		   regState == constants.RegStateAskLocation
+	return regState == constants.RegStateAskName ||
+		regState == constants.RegStateAskAge ||
+		regState == constants.RegStateAskGender ||
+		regState == constants.RegStateAskLocation
 }
 
 // sendMessage mengirim pesan dengan Markdown
@@ -321,19 +322,19 @@ func (p *StartPlugin) HandleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbota
 	userID := callback.From.ID
 
 	// Handle edit profile callbacks
-	if callback.Data == "edit_name" || callback.Data == "edit_age" || 
-	   callback.Data == "edit_gender" || callback.Data == "edit_location" || 
-	   callback.Data == "edit_cancel" || callback.Data == "edit_gender_male" ||
-	   callback.Data == "edit_gender_female" || callback.Data == "edit_gender_other" {
+	if callback.Data == "edit_name" || callback.Data == "edit_age" ||
+		callback.Data == "edit_gender" || callback.Data == "edit_location" ||
+		callback.Data == "edit_cancel" || callback.Data == "edit_gender_male" ||
+		callback.Data == "edit_gender_female" || callback.Data == "edit_gender_other" {
 		return p.handleEditCallback(ctx, bot, callback)
 	}
 
 	// Handle close welcome button
-	if (callback.Data == "close_welcome") {
+	if callback.Data == "close_welcome" {
 		// Delete the message
 		deleteMsg := tgbotapi.NewDeleteMessage(chatID, callback.Message.MessageID)
 		bot.Send(deleteMsg)
-		
+
 		// Answer callback to remove loading state
 		callbackResponse := tgbotapi.NewCallback(callback.ID, "")
 		bot.Send(callbackResponse)
@@ -367,18 +368,18 @@ func (p *StartPlugin) HandleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbota
 
 // CanHandleCallback mengecek apakah plugin bisa handle callback
 func (p *StartPlugin) CanHandleCallback(data string) bool {
-	return data == "close_welcome" || 
-		   data == "gender_male" || 
-		   data == "gender_female" || 
-		   data == "gender_other" ||
-		   data == "edit_name" ||
-		   data == "edit_age" ||
-		   data == "edit_gender" ||
-		   data == "edit_location" ||
-		   data == "edit_cancel" ||
-		   data == "edit_gender_male" ||
-		   data == "edit_gender_female" ||
-		   data == "edit_gender_other"
+	return data == "close_welcome" ||
+		data == "gender_male" ||
+		data == "gender_female" ||
+		data == "gender_other" ||
+		data == "edit_name" ||
+		data == "edit_age" ||
+		data == "edit_gender" ||
+		data == "edit_location" ||
+		data == "edit_cancel" ||
+		data == "edit_gender_male" ||
+		data == "edit_gender_female" ||
+		data == "edit_gender_other"
 }
 
 // handleEditProfile menampilkan menu edit profil
@@ -391,7 +392,7 @@ func (p *StartPlugin) handleEditProfile(ctx context.Context, bot *tgbotapi.BotAP
 
 	msg := tgbotapi.NewMessage(chatID, constants.MsgEditProfile)
 	msg.ParseMode = "Markdown"
-	
+
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👤 Edit Nama", "edit_name"),
@@ -406,7 +407,7 @@ func (p *StartPlugin) handleEditProfile(ctx context.Context, bot *tgbotapi.BotAP
 		),
 	)
 	msg.ReplyMarkup = keyboard
-	
+
 	_, err := bot.Send(msg)
 	return err
 }
@@ -444,18 +445,19 @@ func (p *StartPlugin) handleEditAgeInput(ctx context.Context, bot *tgbotapi.BotA
 
 // handleEditLocationInput menangani input lokasi baru
 func (p *StartPlugin) handleEditLocationInput(ctx context.Context, bot *tgbotapi.BotAPI, chatID, userID int64, location *tgbotapi.Location) error {
-	// Update coordinates
+	// Save new coordinates
 	databases.SetVar(ctx, userID, constants.VarLatitude, location.Latitude)
 	databases.SetVar(ctx, userID, constants.VarLongitude, location.Longitude)
-	
-	// Format location name
-	locationName := fmt.Sprintf("📍 %.4f, %.4f", location.Latitude, location.Longitude)
+
+	// Get city name from coordinates using reverse geocoding
+	cityName := databases.GetCityNameFromCoordinates(location.Latitude, location.Longitude)
+	locationName := fmt.Sprintf("📍 %s", cityName)
 	databases.SetVar(ctx, userID, constants.VarLocation, locationName)
-	
+
 	// Clear edit state
 	databases.SetVar(ctx, userID, constants.VarEditState, constants.EditStateNone)
 
-	return p.sendMessageRemoveKeyboard(bot, chatID, constants.MsgProfileUpdated)
+	return p.sendMessage(bot, chatID, constants.MsgProfileUpdated)
 }
 
 // handleEditCallback menangani callback dari edit profile
@@ -515,7 +517,7 @@ func (p *StartPlugin) handleEditCallback(ctx context.Context, bot *tgbotapi.BotA
 func (p *StartPlugin) sendEditGenderButtons(bot *tgbotapi.BotAPI, chatID int64, text string) error {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "Markdown"
-	
+
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👨 "+constants.GenderMale, "edit_gender_male"),
@@ -526,7 +528,7 @@ func (p *StartPlugin) sendEditGenderButtons(bot *tgbotapi.BotAPI, chatID int64, 
 		),
 	)
 	msg.ReplyMarkup = keyboard
-	
+
 	_, err := bot.Send(msg)
 	return err
 }

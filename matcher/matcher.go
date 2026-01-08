@@ -27,6 +27,7 @@ const (
 	KeyMatchLock      = "match:lock:%d"   // Lock to prevent double matching
 	LockExpiration    = 10 * time.Second  // Lock expiration time
 	UserDataTTL       = 5 * time.Minute   // User data expiration
+	MaxNearbyDistance = 100.0             // Maximum distance in km for nearby search
 )
 
 // SearchRequest represents a search request from a user
@@ -424,8 +425,15 @@ func (m *Matcher) handleNearbySearch(req *SearchRequest) {
 		}
 	}
 
-	// Try to match with closest available partner
+	// Try to match with closest available partner (within max distance)
 	for _, candidate := range candidates {
+		// Skip if too far away
+		if candidate.distance > MaxNearbyDistance {
+			log.Printf("⏩ Skipping user %d for user %d - too far away (%.1f km > %.0f km max)",
+				candidate.partnerID, req.UserID, candidate.distance, MaxNearbyDistance)
+			continue
+		}
+
 		// Try to lock partner
 		partnerLockKey := fmt.Sprintf(KeyMatchLock, candidate.partnerID)
 		partnerLocked, err := m.rdb.SetNX(ctx, partnerLockKey, "1", LockExpiration).Result()
@@ -465,7 +473,7 @@ func (m *Matcher) handleNearbySearch(req *SearchRequest) {
 		return
 	}
 
-	log.Printf("⏳ No partner found for user %d yet (nearby)", req.UserID)
+	log.Printf("⏳ No nearby partner within %.0fkm for user %d, will retry", MaxNearbyDistance, req.UserID)
 }
 
 // cleanupWorker removes stale searching users periodically
@@ -673,6 +681,19 @@ func (m *Matcher) retryMatchAllUsers() {
 					user1.searchReq.Latitude, user1.searchReq.Longitude,
 					user2.searchReq.Latitude, user2.searchReq.Longitude,
 				)
+
+				// Check if within max distance for nearby mode
+				if (user1.searchReq.SearchMode == constants.SearchModeNearby ||
+					user2.searchReq.SearchMode == constants.SearchModeNearby) &&
+					distance > MaxNearbyDistance {
+					// Skip this pair - too far for nearby mode
+					m.rdb.Del(ctx, lockKey1)
+					m.rdb.Del(ctx, lockKey2)
+					log.Printf("⏩ Skipping retry match %d <-> %d - too far (%.1f km > %.0f km)",
+						user1.userID, user2.userID, distance, MaxNearbyDistance)
+					continue
+				}
+
 				searchMode = constants.SearchModeNearby
 			}
 

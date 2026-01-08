@@ -25,6 +25,7 @@ const (
 	CmdBan       = "ban"
 	CmdUnban     = "unban"
 	CmdEnv       = "env"
+	CmdUpdate    = "update"
 )
 
 // User Status
@@ -65,20 +66,21 @@ Ketik /search untuk mulai mencari partner!`
 • Jadilah ramah dan sopan
 • Jika tidak nyaman, gunakan /next atau /stop`
 
-	MsgSearching         = "🔍 Mencari partner chat... Mohon tunggu."
-	MsgAlreadySearching  = "⏳ Kamu sudah dalam antrian pencarian. Mohon tunggu."
-	MsgAlreadyChatting   = "💬 Kamu sudah terhubung dengan seseorang. Gunakan /stop untuk mengakhiri."
-	MsgPartnerFound      = "🎉 Partner ditemukan! Silakan mulai percakapan.\n\nKetik /next untuk skip atau /stop untuk mengakhiri."
-	MsgPartnerLeft       = "😔 Partner telah meninggalkan chat.\n\nKetik /search untuk mencari partner baru."
-	MsgChatEnded         = "👋 Chat telah diakhiri.\n\nKetik /search untuk mencari partner baru."
-	MsgNotChatting       = "❌ Kamu tidak sedang dalam percakapan."
-	MsgNotSearching      = "❌ Kamu tidak sedang mencari partner."
-	MsgSearchCancelled   = "❎ Pencarian dibatalkan."
-	MsgCannotSendToSelf  = "❌ Tidak bisa mengirim pesan ke diri sendiri."
-	MsgPartnerDisconnect = "⚠️ Partner terputus dari chat."
-	MsgError             = "❌ Terjadi kesalahan. Silakan coba lagi."
-	MsgRegistered        = "✅ Kamu telah terdaftar!"
-	MsgNotRegistered     = "❌ Kamu belum terdaftar. Silakan ketik /start untuk mendaftar."
+	MsgSearching          = "🔍 Mencari partner chat... Mohon tunggu."
+	MsgAlreadySearching   = "⏳ Kamu sudah dalam antrian pencarian. Mohon tunggu."
+	MsgAlreadyChatting    = "💬 Kamu sudah terhubung dengan seseorang. Gunakan /stop untuk mengakhiri."
+	MsgPartnerFound       = "🎉 Partner ditemukan! Silakan mulai percakapan.\n\nKetik /next untuk skip atau /stop untuk mengakhiri."
+	MsgPartnerLeft        = "😔 Partner telah meninggalkan chat.\n\nKetik /search untuk mencari partner baru."
+	MsgChatEnded          = "👋 Chat telah diakhiri.\n\nKetik /search untuk mencari partner baru."
+	MsgNotChatting        = "❌ Kamu tidak sedang dalam percakapan."
+	MsgNotSearching       = "❌ Kamu tidak sedang mencari partner."
+	MsgSearchCancelled    = "❎ Pencarian dibatalkan."
+	MsgCannotSendToSelf   = "❌ Tidak bisa mengirim pesan ke diri sendiri."
+	MsgPartnerDisconnect  = "⚠️ Partner terputus dari chat."
+	MsgError              = "❌ Terjadi kesalahan. Silakan coba lagi."
+	MsgRegistered         = "✅ Kamu telah terdaftar!"
+	MsgNotRegistered      = "❌ Kamu belum terdaftar. Silakan ketik /start untuk mendaftar."
+	MsgAutoClosedInactive = "⏰ Chat kamu telah otomatis ditutup karena sudah lebih dari 2 hari.\n\nKetik /search untuk mencari partner baru!"
 
 	// Share Messages
 	MsgShareSent     = "✅ Kontak kamu telah dikirim ke partner!"
@@ -200,6 +202,7 @@ const (
 /stats - Lihat statistik
 /env - Lihat environment variables
 /broadcast <pesan> - Broadcast ke semua user
+/update - Update bot ke versi terbaru
 /resetdb - Reset database (⚠️ BAHAYA!)
 /addads <pesan> - Tambah ads baru
 /delads <id> - Hapus ads
@@ -257,6 +260,12 @@ heroku config:set MAX_WARNINGS=5 -a app-name
 heroku config:set LOG_GROUP_ID=-100123456 -a app-name
 heroku config:set OWNER_IDS=123,456,789 -a app-name
 ` + "```"
+
+	MsgUpdateStart    = "🔄 *Memulai update bot...*"
+	MsgUpdatePulling  = "📥 Pulling latest code dari git..."
+	MsgUpdateBuilding = "🔨 Building binary baru..."
+	MsgUpdateSuccess  = "✅ Update berhasil! Bot akan restart dalam 3 detik..."
+	MsgUpdateFailed   = "❌ Update gagal: %s"
 )
 
 // Ads Format

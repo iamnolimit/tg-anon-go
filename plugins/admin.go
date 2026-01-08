@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +57,7 @@ func (p *AdminPlugin) Commands() []string {
 		constants.CmdBan,
 		constants.CmdUnban,
 		constants.CmdEnv,
+		constants.CmdUpdate,
 		"confirmreset",
 	}
 }
@@ -104,6 +107,8 @@ func (p *AdminPlugin) HandleCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Mess
 		return p.handleBan(ctx, bot, chatID, message)
 	case constants.CmdUnban:
 		return p.handleUnban(ctx, bot, chatID, message)
+	case constants.CmdUpdate:
+		return p.handleUpdate(ctx, bot, chatID)
 	}
 
 	return nil
@@ -122,19 +127,19 @@ func (p *AdminPlugin) handleAdminPanel(ctx context.Context, bot *tgbotapi.BotAPI
 func (p *AdminPlugin) handleStats(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64) error {
 	totalUsers, activeChats, _ := databases.GetUserStats(ctx)
 	totalMessages, _ := databases.GetGlobalVarInt(ctx, constants.VarGlobalTotalMessages)
-	
+
 	// Count searching users
 	searchingCount, _ := p.countSearchingUsers(ctx)
-	
+
 	// Ads info
 	adsEnabled, _ := databases.GetGlobalVarBool(ctx, constants.VarGlobalAdsEnabled)
 	adsEnabledStr := "Tidak"
 	if adsEnabled {
 		adsEnabledStr = "Ya"
 	}
-	
+
 	ads, _ := p.getAds(ctx)
-	
+
 	msg := fmt.Sprintf(constants.MsgStatsInfo, totalUsers, activeChats, searchingCount, totalMessages, adsEnabledStr, len(ads))
 	return p.sendMessage(bot, chatID, msg)
 }
@@ -152,7 +157,7 @@ func (p *AdminPlugin) handleBroadcast(ctx context.Context, bot *tgbotapi.BotAPI,
 	// Get broadcast message
 	args := strings.TrimPrefix(message.Text, "/"+constants.CmdBroadcast)
 	args = strings.TrimSpace(args)
-	
+
 	if args == "" {
 		return p.sendMessage(bot, chatID, "❌ Format: /broadcast <pesan>")
 	}
@@ -241,14 +246,14 @@ func (p *AdminPlugin) handleResetDBConfirm(ctx context.Context, bot *tgbotapi.Bo
 func (p *AdminPlugin) handleAddAds(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, message *tgbotapi.Message) error {
 	args := strings.TrimPrefix(message.Text, "/"+constants.CmdAddAds)
 	args = strings.TrimSpace(args)
-	
+
 	if args == "" {
 		return p.sendMessage(bot, chatID, "❌ Format: /addads <pesan iklan>")
 	}
 
 	// Get existing ads
 	ads, _ := p.getAds(ctx)
-	
+
 	// Generate new ID
 	newID := 1
 	if len(ads) > 0 {
@@ -275,14 +280,14 @@ func (p *AdminPlugin) handleAddAds(ctx context.Context, bot *tgbotapi.BotAPI, ch
 func (p *AdminPlugin) handleDelAds(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, message *tgbotapi.Message) error {
 	args := strings.TrimPrefix(message.Text, "/"+constants.CmdDelAds)
 	args = strings.TrimSpace(args)
-	
+
 	adID, err := strconv.Atoi(args)
 	if err != nil {
 		return p.sendMessage(bot, chatID, "❌ Format: /delads <id>")
 	}
 
 	ads, _ := p.getAds(ctx)
-	
+
 	// Find and remove ad
 	found := false
 	newAds := make([]Ad, 0)
@@ -309,7 +314,7 @@ func (p *AdminPlugin) handleDelAds(ctx context.Context, bot *tgbotapi.BotAPI, ch
 // handleListAds menampilkan daftar ads
 func (p *AdminPlugin) handleListAds(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64) error {
 	ads, _ := p.getAds(ctx)
-	
+
 	if len(ads) == 0 {
 		return p.sendMessage(bot, chatID, constants.MsgAdsEmpty)
 	}
@@ -325,7 +330,7 @@ func (p *AdminPlugin) handleListAds(ctx context.Context, bot *tgbotapi.BotAPI, c
 // handleToggleAds enable/disable ads
 func (p *AdminPlugin) handleToggleAds(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64) error {
 	enabled, _ := databases.GetGlobalVarBool(ctx, constants.VarGlobalAdsEnabled)
-	
+
 	// Toggle
 	newEnabled := !enabled
 	databases.SetGlobalVar(ctx, constants.VarGlobalAdsEnabled, newEnabled)
@@ -342,7 +347,7 @@ func (p *AdminPlugin) handleToggleAds(ctx context.Context, bot *tgbotapi.BotAPI,
 func (p *AdminPlugin) handleBan(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, message *tgbotapi.Message) error {
 	args := strings.TrimPrefix(message.Text, "/"+constants.CmdBan)
 	args = strings.TrimSpace(args)
-	
+
 	userID, err := strconv.ParseInt(args, 10, 64)
 	if err != nil {
 		return p.sendMessage(bot, chatID, constants.MsgInvalidUserID)
@@ -356,7 +361,7 @@ func (p *AdminPlugin) handleBan(ctx context.Context, bot *tgbotapi.BotAPI, chatI
 func (p *AdminPlugin) handleUnban(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, message *tgbotapi.Message) error {
 	args := strings.TrimPrefix(message.Text, "/"+constants.CmdUnban)
 	args = strings.TrimSpace(args)
-	
+
 	userID, err := strconv.ParseInt(args, 10, 64)
 	if err != nil {
 		return p.sendMessage(bot, chatID, constants.MsgInvalidUserID)
@@ -427,6 +432,44 @@ func (p *AdminPlugin) handleEnv(bot *tgbotapi.BotAPI, chatID int64) error {
 	)
 
 	return p.sendMessage(bot, chatID, msg)
+}
+
+// handleUpdate updates the bot by pulling latest code and rebuilding
+func (p *AdminPlugin) handleUpdate(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64) error {
+	// Send start message
+	p.sendMessage(bot, chatID, constants.MsgUpdateStart)
+
+	// Step 1: Git pull
+	p.sendMessage(bot, chatID, constants.MsgUpdatePulling)
+	gitCmd := exec.Command("git", "pull", "origin", "main")
+	gitOutput, err := gitCmd.CombinedOutput()
+	if err != nil {
+		return p.sendMessage(bot, chatID, fmt.Sprintf(constants.MsgUpdateFailed, fmt.Sprintf("Git pull error: %v\n%s", err, string(gitOutput))))
+	}
+
+	log.Printf("Git pull output: %s", string(gitOutput))
+
+	// Step 2: Build
+	p.sendMessage(bot, chatID, constants.MsgUpdateBuilding)
+	buildCmd := exec.Command("go", "build", "-o", "tg-anon-go.exe")
+	buildOutput, err := buildCmd.CombinedOutput()
+	if err != nil {
+		return p.sendMessage(bot, chatID, fmt.Sprintf(constants.MsgUpdateFailed, fmt.Sprintf("Build error: %v\n%s", err, string(buildOutput))))
+	}
+
+	log.Printf("Build output: %s", string(buildOutput))
+
+	// Step 3: Success message and restart
+	p.sendMessage(bot, chatID, constants.MsgUpdateSuccess)
+
+	// Wait 3 seconds then exit (deployment platform will restart)
+	go func() {
+		time.Sleep(3 * time.Second)
+		log.Println("Exiting for update restart...")
+		os.Exit(0)
+	}()
+
+	return nil
 }
 
 func (p *AdminPlugin) sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) error {
