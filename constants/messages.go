@@ -14,18 +14,21 @@ const (
 
 // Admin Commands
 const (
-	CmdAdmin     = "admin"
-	CmdBroadcast = "broadcast"
-	CmdResetDB   = "resetdb"
-	CmdAddAds    = "addads"
-	CmdDelAds    = "delads"
-	CmdListAds   = "listads"
-	CmdToggleAds = "toggleads"
-	CmdStats     = "stats"
-	CmdBan       = "ban"
-	CmdUnban     = "unban"
-	CmdEnv       = "env"
-	CmdUpdate    = "update"
+	CmdAdmin      = "admin"
+	CmdBroadcast  = "broadcast"
+	CmdResetDB    = "resetdb"
+	CmdAddAds     = "addads"
+	CmdDelAds     = "delads"
+	CmdListAds    = "listads"
+	CmdToggleAds  = "toggleads"
+	CmdStats      = "stats"
+	CmdBan        = "ban"
+	CmdUnban      = "unban"
+	CmdEnv        = "env"
+	CmdUpdate     = "update"
+	CmdSetFsub    = "setfsub"
+	CmdRemoveFsub = "removefsub"
+	CmdFsubInfo   = "fsubinfo"
 )
 
 // User Status
@@ -292,4 +295,20 @@ const (
 // Callback Prefixes
 const (
 	CallbackWarnUser = "warn_user_" // Format: warn_user_{userID}_{messageID}
+)
+
+// FSub Messages
+const (
+	MsgFsubRequired = `⚠️ *Akses Terbatas*
+
+Untuk menggunakan bot ini, kamu harus join channel kami terlebih dahulu.
+
+Klik tombol di bawah untuk join, lalu klik "✅ Sudah Join" untuk verifikasi.`
+
+	MsgFsubVerified      = "✅ Terima kasih sudah join! Sekarang kamu bisa menggunakan bot."
+	MsgFsubNotJoined     = "❌ Kamu belum join channel. Silakan join terlebih dahulu."
+	MsgFsubSet           = "✅ FSub channel berhasil diset: %s\n\nBot sekarang akan meminta semua user untuk join channel sebelum bisa menggunakan fitur."
+	MsgFsubRemoved       = "✅ FSub berhasil dinonaktifkan. User sekarang bisa langsung menggunakan bot tanpa harus join channel."
+	MsgFsubInfo          = "📢 *FSub Info:*\n\nStatus: %s\nChannel: %s"
+	MsgFsubInvalidFormat = "❌ Format salah.\n\nGunakan: /setfsub @channelname\natau: /setfsub -100123456789"
 )

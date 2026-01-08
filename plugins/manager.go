@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"context"
 	"log"
 	"strings"
 
@@ -29,20 +30,20 @@ func NewManager() *Manager {
 // Register mendaftarkan plugin
 func (m *Manager) Register(plugin Plugin) {
 	m.plugins = append(m.plugins, plugin)
-	
+
 	// Map commands ke plugin
 	for _, cmd := range plugin.Commands() {
 		m.commands[cmd] = plugin
 		log.Printf("📦 Registered command: /%s from plugin: %s", cmd, plugin.Name())
 	}
-	
+
 	log.Printf("✅ Plugin loaded: %s", plugin.Name())
 }
 
 // SetMatcher sets the matcher instance
 func (m *Manager) SetMatcher(mch *matcher.Matcher) {
 	m.matcher = mch
-	
+
 	// Pass matcher to ChatPlugin
 	for _, plugin := range m.plugins {
 		if chatPlugin, ok := plugin.(*ChatPlugin); ok {
@@ -50,7 +51,7 @@ func (m *Manager) SetMatcher(mch *matcher.Matcher) {
 			break
 		}
 	}
-	
+
 	log.Println("✅ Matcher instance set in plugin manager and ChatPlugin")
 }
 
@@ -85,17 +86,38 @@ func (m *Manager) HandleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		return
 	}
 
+	// Check fsub (force subscribe) - except for /start command
+	if message.IsCommand() {
+		command := strings.ToLower(message.Command())
+		if command != "start" {
+			ctx := context.Background()
+			allowed, channel := CheckFsub(ctx, bot, message.From.ID)
+			if !allowed {
+				SendFsubPrompt(bot, message.Chat.ID, channel)
+				return
+			}
+		}
+	} else {
+		// Check fsub for regular messages too
+		ctx := context.Background()
+		allowed, channel := CheckFsub(ctx, bot, message.From.ID)
+		if !allowed {
+			SendFsubPrompt(bot, message.Chat.ID, channel)
+			return
+		}
+	}
+
 	// Handle command
 	if message.IsCommand() {
 		command := strings.ToLower(message.Command())
-		
+
 		if plugin, exists := m.commands[command]; exists {
 			if err := plugin.HandleCommand(bot, message, command); err != nil {
 				log.Printf("Error handling command /%s: %v", command, err)
 			}
 			return
 		}
-		
+
 		// Unknown command
 		log.Printf("Unknown command: /%s", command)
 		return
@@ -114,6 +136,13 @@ func (m *Manager) HandleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 // handleCallback menangani callback query dari inline keyboard
 func (m *Manager) handleCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
+	// Handle fsub verification callback first
+	if callback.Data == "fsub_verify" {
+		m.handleFsubVerify(bot, callback)
+		return
+	}
+
+	// Delegate to plugins
 	for _, plugin := range m.plugins {
 		if plugin.CanHandleCallback(callback.Data) {
 			if err := plugin.HandleCallbackQuery(bot, callback); err != nil {
@@ -128,12 +157,48 @@ func (m *Manager) handleCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.Callba
 func (m *Manager) LoadDefaultPlugins() {
 	m.Register(NewStartPlugin())
 	m.Register(NewChatPlugin())
-	
+
 	// Register admin plugin
 	m.adminPlugin = NewAdminPlugin()
 	m.Register(m.adminPlugin)
-	
+
 	log.Println("✅ All default plugins loaded")
+}
+
+// handleFsubVerify handles fsub verification callback
+func (m *Manager) handleFsubVerify(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
+	ctx := context.Background()
+	userID := callback.From.ID
+
+	// Check if user is now a member
+	allowed, channel := CheckFsub(ctx, bot, userID)
+
+	// Answer callback
+	var callbackText string
+	if allowed {
+		callbackText = "✅ Verifikasi berhasil!"
+	} else {
+		callbackText = "❌ Belum join channel"
+	}
+
+	callbackResponse := tgbotapi.NewCallback(callback.ID, callbackText)
+	bot.Send(callbackResponse)
+
+	// Delete the prompt message
+	deleteMsg := tgbotapi.NewDeleteMessage(callback.Message.Chat.ID, callback.Message.MessageID)
+	bot.Send(deleteMsg)
+
+	// Send result message
+	var msg tgbotapi.MessageConfig
+	if allowed {
+		msg = tgbotapi.NewMessage(callback.Message.Chat.ID, constants.MsgFsubVerified)
+	} else {
+		msg = tgbotapi.NewMessage(callback.Message.Chat.ID, constants.MsgFsubNotJoined)
+		// Resend prompt
+		SendFsubPrompt(bot, callback.Message.Chat.ID, channel)
+	}
+	msg.ParseMode = "Markdown"
+	bot.Send(msg)
 }
 
 // GetAdminPlugin mengembalikan admin plugin untuk akses ads

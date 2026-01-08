@@ -58,6 +58,9 @@ func (p *AdminPlugin) Commands() []string {
 		constants.CmdUnban,
 		constants.CmdEnv,
 		constants.CmdUpdate,
+		constants.CmdSetFsub,
+		constants.CmdRemoveFsub,
+		constants.CmdFsubInfo,
 		"confirmreset",
 	}
 }
@@ -109,6 +112,12 @@ func (p *AdminPlugin) HandleCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Mess
 		return p.handleUnban(ctx, bot, chatID, message)
 	case constants.CmdUpdate:
 		return p.handleUpdate(ctx, bot, chatID)
+	case constants.CmdSetFsub:
+		return p.handleSetFsub(ctx, bot, chatID, message)
+	case constants.CmdRemoveFsub:
+		return p.handleRemoveFsub(ctx, bot, chatID)
+	case constants.CmdFsubInfo:
+		return p.handleFsubInfo(ctx, bot, chatID)
 	}
 
 	return nil
@@ -470,6 +479,44 @@ func (p *AdminPlugin) handleUpdate(ctx context.Context, bot *tgbotapi.BotAPI, ch
 	}()
 
 	return nil
+}
+
+// handleSetFsub sets the fsub channel
+func (p *AdminPlugin) handleSetFsub(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, message *tgbotapi.Message) error {
+	args := strings.TrimSpace(strings.TrimPrefix(message.Text, "/"+constants.CmdSetFsub))
+	if args == "" {
+		return p.sendMessage(bot, chatID, constants.MsgFsubInvalidFormat)
+	}
+
+	// Save channel
+	databases.SetGlobalVar(ctx, constants.VarGlobalFsubChannel, args)
+	databases.SetGlobalVar(ctx, constants.VarGlobalFsubEnabled, true)
+
+	return p.sendMessage(bot, chatID, fmt.Sprintf(constants.MsgFsubSet, args))
+}
+
+// handleRemoveFsub disables fsub
+func (p *AdminPlugin) handleRemoveFsub(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64) error {
+	databases.SetGlobalVar(ctx, constants.VarGlobalFsubEnabled, false)
+	return p.sendMessage(bot, chatID, constants.MsgFsubRemoved)
+}
+
+// handleFsubInfo shows fsub status
+func (p *AdminPlugin) handleFsubInfo(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64) error {
+	enabled, _ := databases.GetGlobalVarBool(ctx, constants.VarGlobalFsubEnabled)
+	channel, _ := databases.GetGlobalVar(ctx, constants.VarGlobalFsubChannel)
+
+	status := "Disabled"
+	if enabled {
+		status = "Enabled"
+	}
+
+	if channel == "" {
+		channel = "Belum diset"
+	}
+
+	msg := fmt.Sprintf(constants.MsgFsubInfo, status, channel)
+	return p.sendMessage(bot, chatID, msg)
 }
 
 func (p *AdminPlugin) sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) error {

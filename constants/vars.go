@@ -105,11 +105,11 @@ const (
 	VarSessionStart = "session_start" // Waktu mulai sesi
 
 	// Flags
-	VarIsBanned    = "is_banned"    // Apakah user dibanned
-	VarIsVerified  = "is_verified"  // Apakah user terverifikasi
-	VarIsPremium   = "is_premium"   // Apakah user premium
+	VarIsBanned     = "is_banned"     // Apakah user dibanned
+	VarIsVerified   = "is_verified"   // Apakah user terverifikasi
+	VarIsPremium    = "is_premium"    // Apakah user premium
 	VarIsRegistered = "is_registered" // Apakah user sudah registrasi
-	VarWarnCount   = "warn_count"   // Jumlah warn user
+	VarWarnCount    = "warn_count"    // Jumlah warn user
 
 	// Settings
 	VarNotifications = "notifications" // Notifikasi enabled/disabled
@@ -124,6 +124,8 @@ const (
 	VarGlobalBotStatus     = "global_bot_status"     // Status bot (maintenance, active)
 	VarGlobalAds           = "global_ads"            // Daftar ads dalam JSON
 	VarGlobalAdsEnabled    = "global_ads_enabled"    // Ads enabled/disabled
+	VarGlobalFsubChannel   = "global_fsub_channel"   // Channel username atau ID untuk fsub
+	VarGlobalFsubEnabled   = "global_fsub_enabled"   // FSub enabled/disabled
 )
 
 // Gender Values
