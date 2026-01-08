@@ -86,24 +86,35 @@ func (m *Manager) HandleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		return
 	}
 
-	// Check fsub (force subscribe) - except for /start command
-	if message.IsCommand() {
-		command := strings.ToLower(message.Command())
-		if command != "start" {
+	// Check if user is owner - owners bypass fsub
+	isOwner := false
+	for _, ownerID := range constants.OwnerIDs {
+		if message.From.ID == ownerID {
+			isOwner = true
+			break
+		}
+	}
+
+	// Check fsub (force subscribe) - except for /start command and owners
+	if !isOwner {
+		if message.IsCommand() {
+			command := strings.ToLower(message.Command())
+			if command != "start" {
+				ctx := context.Background()
+				allowed, channel := CheckFsub(ctx, bot, message.From.ID)
+				if !allowed {
+					SendFsubPrompt(bot, message.Chat.ID, channel)
+					return
+				}
+			}
+		} else {
+			// Check fsub for regular messages too
 			ctx := context.Background()
 			allowed, channel := CheckFsub(ctx, bot, message.From.ID)
 			if !allowed {
 				SendFsubPrompt(bot, message.Chat.ID, channel)
 				return
 			}
-		}
-	} else {
-		// Check fsub for regular messages too
-		ctx := context.Background()
-		allowed, channel := CheckFsub(ctx, bot, message.From.ID)
-		if !allowed {
-			SendFsubPrompt(bot, message.Chat.ID, channel)
-			return
 		}
 	}
 
