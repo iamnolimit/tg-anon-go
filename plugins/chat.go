@@ -90,7 +90,30 @@ func (p *ChatPlugin) handleSearch(ctx context.Context, bot *tgbotapi.BotAPI, cha
 	case constants.StatusSearching:
 		return p.sendMessage(bot, chatID, constants.MsgAlreadySearching)
 	case constants.StatusChatting:
-		return p.sendMessage(bot, chatID, constants.MsgAlreadyChatting)
+		// Defensive check - verify partner exists and is valid
+		partnerID, err := databases.GetUserPartner(ctx, userID)
+		if err != nil || partnerID == 0 {
+			// No partner found - cleanup stuck state
+			log.Printf("⚠️ User %d stuck in chatting status with no partner, cleaning up...", userID)
+			databases.SetUserStatus(ctx, userID, constants.StatusIdle)
+			databases.ClearUserPartner(ctx, userID)
+			// Fall through to allow search below
+		} else {
+			// Verify partner is also chatting with us
+			partnerStatus, _ := databases.GetUserStatus(ctx, partnerID)
+			partnerPartnerID, _ := databases.GetUserPartner(ctx, partnerID)
+
+			if partnerStatus != constants.StatusChatting || partnerPartnerID != userID {
+				// Partner not properly connected - cleanup
+				log.Printf("⚠️ User %d stuck in chatting, partner %d status: %s, partner's partner: %d. Cleaning up...",
+					userID, partnerID, partnerStatus, partnerPartnerID)
+				databases.DisconnectUsers(ctx, userID, partnerID)
+				// Fall through to allow search below
+			} else {
+				// Valid connection exists
+				return p.sendMessage(bot, chatID, constants.MsgAlreadyChatting)
+			}
+		}
 	}
 	// Update last active
 	databases.UpdateLastActive(ctx, userID)
@@ -102,7 +125,7 @@ func (p *ChatPlugin) handleSearch(ctx context.Context, bot *tgbotapi.BotAPI, cha
 // doSearchAuto melakukan pencarian otomatis (terdekat dulu, lalu random)
 func (p *ChatPlugin) doSearchAuto(ctx context.Context, bot *tgbotapi.BotAPI, chatID, userID int64) error {
 	log.Printf("🔍 User %d mencari partner (auto)...", userID)
-	
+
 	// Set user status to searching
 	err := databases.SetUserStatus(ctx, userID, constants.StatusSearching)
 	if err != nil {
@@ -113,7 +136,7 @@ func (p *ChatPlugin) doSearchAuto(ctx context.Context, bot *tgbotapi.BotAPI, cha
 	// Check if user has location - use nearby mode, else random
 	var searchMode string
 	var lat, lon float64
-	
+
 	if databases.HasLocation(ctx, userID) {
 		searchMode = constants.SearchModeNearby
 		lat, _ = databases.GetVarFloat64(ctx, userID, constants.VarLatitude)
@@ -184,7 +207,7 @@ func (p *ChatPlugin) handleNext(ctx context.Context, bot *tgbotapi.BotAPI, chatI
 		if partnerID > 0 {
 			// Notify partner
 			p.sendMessage(bot, partnerID, constants.MsgPartnerLeft)
-			
+
 			// Disconnect users
 			databases.DisconnectUsers(ctx, userID, partnerID)
 		}
@@ -223,7 +246,7 @@ func (p *ChatPlugin) handleStop(ctx context.Context, bot *tgbotapi.BotAPI, chatI
 		if partnerID > 0 {
 			// Notify partner
 			p.sendMessage(bot, partnerID, constants.MsgPartnerLeft)
-			
+
 			// Disconnect users
 			databases.DisconnectUsers(ctx, userID, partnerID)
 		} else {
@@ -255,12 +278,12 @@ func (p *ChatPlugin) HandleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Messa
 	// Update last active & increment message count
 	databases.UpdateLastActive(ctx, userID)
 	databases.IncrementUserTotalMessages(ctx, userID)
-	
+
 	// Increment global message count for ads
 	currentCount, _ := databases.GetVarInt(ctx, userID, "msg_count_ads")
 	currentCount++
 	databases.SetVar(ctx, userID, "msg_count_ads", currentCount)
-	
+
 	// Check if should send ads (every N messages)
 	if currentCount >= constants.AdsIntervalMessages {
 		databases.SetVar(ctx, userID, "msg_count_ads", 0)
@@ -294,13 +317,13 @@ func (p *ChatPlugin) CanHandleMessage(message *tgbotapi.Message) bool {
 	if message.IsCommand() {
 		return false
 	}
-	
+
 	ctx := context.Background()
 	status, err := databases.GetUserStatus(ctx, message.From.ID)
 	if err != nil {
 		return false
 	}
-	
+
 	return status == constants.StatusChatting
 }
 
@@ -324,7 +347,7 @@ func (p *ChatPlugin) forwardPhoto(bot *tgbotapi.BotAPI, partnerID int64, message
 
 	// Log to log group with warn button
 	p.logMediaToGroup(bot, message.From.ID, partnerID, "Photo", photo.FileID, sentMsg.MessageID)
-	
+
 	return nil
 }
 
@@ -352,7 +375,7 @@ func (p *ChatPlugin) forwardVideo(bot *tgbotapi.BotAPI, partnerID int64, message
 
 	// Log to log group with warn button
 	p.logMediaToGroup(bot, message.From.ID, partnerID, "Video", message.Video.FileID, sentMsg.MessageID)
-	
+
 	return nil
 }
 
@@ -510,12 +533,12 @@ func (p *ChatPlugin) handleWarnCallback(ctx context.Context, bot *tgbotapi.BotAP
 	if err != nil {
 		return err
 	}
-	
+
 	partnerID, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
 		return err
 	}
-	
+
 	sentMessageID, err := strconv.Atoi(parts[2])
 	if err != nil {
 		return err
@@ -534,7 +557,7 @@ func (p *ChatPlugin) handleWarnCallback(ctx context.Context, bot *tgbotapi.BotAP
 	if newWarns >= constants.MaxWarnings {
 		// Ban user
 		databases.SetVar(ctx, senderID, constants.VarIsBanned, true)
-		
+
 		// Disconnect if chatting
 		status, _ := databases.GetUserStatus(ctx, senderID)
 		if status == constants.StatusChatting {
